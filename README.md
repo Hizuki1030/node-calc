@@ -7,9 +7,10 @@ npm install
 npm run dev     # http://localhost:5180
 ```
 
-Claudeによるブロック設計を使う場合は `.env.example` を `.env` にコピーし、
+AIによるブロック設計を使う場合は `.env.example` を `.env` にコピーし、
 `ANTHROPIC_API_KEY` を設定してから開発サーバーを起動する。APIキーはブラウザへ渡さず、
-Viteのサーバー側からMessages APIを呼び出す。
+Viteのサーバー側からAPIを呼び出す。呼び先はClaude直結が既定だが、`AI_API_STYLE=openai` と
+`AI_API_BASE` を設定すればLiteLLMプロキシ経由で他ベンダーへ振り分けることもできる（詳細は `.env.example`）。
 
 Tailscale 越しに他の端末（iPad など）から開く場合は、`server.host` を開けてあるので
 `http://<このマシンの tailscale IP>:5180` でそのまま繋がる。

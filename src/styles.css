@@ -102,6 +102,7 @@ button {
 /* ---------------- 骨格 ---------------- */
 
 .nc-app {
+  position: relative;
   display: grid;
   grid-template-rows: auto 1fr;
   height: 100%;
@@ -1320,11 +1321,14 @@ button {
 .nc-generated-formula { padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; color: var(--teal); overflow-wrap: anywhere; }
 
 .nc-variable-modal,
-.nc-monitor-modal {
+.nc-monitor-modal,
+.nc-solve-modal {
   display: flex;
   flex-direction: column;
   gap: 15px;
   width: min(440px, 100%);
+  max-height: min(640px, calc(100vh - 60px));
+  overflow: auto;
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--line);

@@ -62,7 +62,7 @@ export function FormulaEditor({
     changeRef.current(el.value)
   }
 
-  // Claude の提案を適用したときや、別のブロックを開いたときは表示を入れ替える。
+  // AI の提案を適用したときや、別のブロックを開いたときは表示を入れ替える。
   // 自分が打った内容が一周して返ってきただけの場合は、カーソルを飛ばさないよう何もしない。
   useEffect(() => {
     const el = ref.current

@@ -16,7 +16,8 @@ function isDraft(value: unknown): value is BlockDraft {
 }
 
 /**
- * Claude に計算ブロックを設計してもらう欄。
+ * AI に計算ブロックを設計してもらう欄。呼び先は Claude 固定ではなく、LiteLLM 経由で
+ * 他ベンダーへ振り分けている場合もあるので、文言は一貫して「AI」とだけ呼ぶ。
  * 依頼文の状態をこのコンポーネントに閉じ込めることで、1文字打つたびに
  * 編集モーダル全体（入力欄・単位ピッカー・数式プレビュー）が再描画されるのを防ぐ。
  */
@@ -29,7 +30,7 @@ export function AiBlockDesigner({ current, onApply }: { current: () => BlockDraf
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const askClaude = async () => {
+  const askAi = async () => {
     const prompt = promptRef.current?.value ?? ''
     if (!prompt.trim()) return
     setBusy(true)
@@ -42,8 +43,8 @@ export function AiBlockDesigner({ current, onApply }: { current: () => BlockDraf
         body: JSON.stringify({ request: prompt, current: current() }),
       })
       const body = await response.json() as { draft?: unknown; error?: string }
-      if (!response.ok) throw new Error(body.error || 'Claude APIへの接続に失敗しました')
-      if (!isDraft(body.draft)) throw new Error('Claudeから正しいブロック定義が返りませんでした')
+      if (!response.ok) throw new Error(body.error || 'AIへの接続に失敗しました')
+      if (!isDraft(body.draft)) throw new Error('AIから正しいブロック定義が返りませんでした')
       const proposed = body.draft
       const proposalReport = checkGraphUnits({ nextId: 2, edges: [], nodes: [{
         id: 'proposal', kind: 'block', x: 0, y: 0,
@@ -54,7 +55,7 @@ export function AiBlockDesigner({ current, onApply }: { current: () => BlockDraf
           calcs: proposed.calcs.map((item, index) => ({ id: `c${index}`, ...item })),
         },
       }] })
-      if (!proposalReport.ok) throw new Error(`Claudeの提案を単位検査で止めました: ${proposalReport.issues.map((item) => item.message).join(' / ')}`)
+      if (!proposalReport.ok) throw new Error(`AIの提案を単位検査で止めました: ${proposalReport.issues.map((item) => item.message).join(' / ')}`)
       setDraft(proposed)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -65,7 +66,7 @@ export function AiBlockDesigner({ current, onApply }: { current: () => BlockDraf
 
   return (
     <section className="nc-ai-designer">
-      <div className="nc-ai-head"><strong>Claudeで計算ブロックを設計</strong><span>入力・式・出力・単位をまとめて提案</span></div>
+      <div className="nc-ai-head"><strong>AIで計算ブロックを設計</strong><span>入力・式・出力・単位をまとめて提案</span></div>
       <textarea
         ref={promptRef}
         className="nc-textarea"
@@ -80,8 +81,8 @@ export function AiBlockDesigner({ current, onApply }: { current: () => BlockDraf
         onCompositionEnd={(e) => setHasPrompt(e.currentTarget.value.trim().length > 0)}
         placeholder="例：幅と高さから面積と周長を計算したい。長さはmm、面積はmm^2にする"
       />
-      <button className="nc-btn nc-btn-ai" disabled={busy || !hasPrompt} onClick={askClaude}>
-        {busy ? '考えています…' : 'Claudeに設計してもらう'}
+      <button className="nc-btn nc-btn-ai" disabled={busy || !hasPrompt} onClick={askAi}>
+        {busy ? '考えています…' : 'AIに設計してもらう'}
       </button>
       {error && <p className="nc-warn">{error}</p>}
       {draft && <div className="nc-ai-proposal">

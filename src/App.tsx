@@ -29,6 +29,7 @@ import { VariableEditorModal } from './panels/VariableEditorModal.tsx'
 import { ProjectControls } from './panels/ProjectControls.tsx'
 import { TableEditorModal } from './panels/TableEditorModal.tsx'
 import { MonitorEditorModal } from './panels/MonitorEditorModal.tsx'
+import { SolveModal } from './panels/SolveModal.tsx'
 import { inputPorts, outputPortKeys, outputPorts, type CalcNode } from './types.ts'
 
 const nodeTypes = { variable: VariableNode, block: BlockNode, table: TableNode, result: ResultNode, monitor: MonitorNode }
@@ -251,6 +252,7 @@ function Canvas() {
 }
 
 function Shell() {
+  const [solveOpen, setSolveOpen] = useState(false)
   return (
     <div className="nc-app">
       <header className="nc-topbar">
@@ -259,7 +261,9 @@ function Shell() {
         </h1>
         <p className="nc-tagline">計算のまとまりを並べて、振って、逆から解く</p>
         <ProjectControls />
+        <button className="nc-btn nc-btn-primary" onClick={() => setSolveOpen(true)}>逆算</button>
       </header>
+      {solveOpen && <SolveModal onClose={() => setSolveOpen(false)} />}
 
       <div className="nc-main">
         <ReactFlowProvider>
