@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { Buffer } from 'node:buffer'
+import { UNIT_QUANTITIES } from './src/units/catalog.ts'
 
 /** propose_block ツールの入力スキーマ。Anthropic / OpenAI 互換の両方式で使い回す。 */
 const BLOCK_SCHEMA = {
@@ -23,11 +24,36 @@ const BLOCK_SCHEMA = {
   },
 } as const
 
+/**
+ * 単位カタログから「量ごとに使える記号」のテキストを作る。ハードコードで重複させず、
+ * catalog.ts が更新されたらプロンプト側も自動で追随する。
+ */
+function unitVocabularyText(): string {
+  return UNIT_QUANTITIES
+    .map((q) => `- ${q.name}: ${q.notations.map((n) => n.symbol).join(' ')}`)
+    .join('\n')
+}
+
 const SYSTEM_PROMPT = `あなたはノード型計算アプリの計算ブロック設計者です。ユーザーの目的から必要十分な入力と、上から順に評価できる代入式を設計してください。
 式で使える演算子は + - * / ^ % と比較、関数は MAX, MIN, IF, ROUND, ROUNDUP, ROUNDDOWN, CEILING, FLOOR, SQRT, ABS, MOD, PI です。
 各式は calcs の name = expr として扱われ、exprには入力名とそれより上のcalcsのnameだけを「{変数名}」の記法で使えます。日本語や空白を含む変数名も使えます。
-全入力・全計算行に単位が必須です。無次元は "1"。複数出力にしてよいですが、ユーザーが必要な結果だけ exposed=true にしてください。
-単位は mm, mm^2, m/s, kg*m/s^2 の形式で、式の次元と厳密に一致させてください。説明文ではなく必ず propose_block ツールを呼んでください。`
+全入力・全計算行に単位が必須です。複数出力にしてよいですが、ユーザーが必要な結果だけ exposed=true にしてください。
+
+単位の記号は、必ず次の一覧にある表記だけを使い、* / ^ で組み合わせてください（例: kg*m/s^2, 円/枚）。
+一覧にない記号（degF、ヶ月、pcs など、それらしく見えても存在しない単位）は絶対に書かないでください。
+一覧の中にちょうど良い量が無い場合や、回数・倍率・比率など単位を持たない掛け目には "1" を使ってください
+（"ヶ月分の倍率" のような依頼は、月数を単位 "1" の無次元入力として扱えば表現できます）。
+${unitVocabularyText()}
+
++ と - は、両辺の単位が表す「量」が完全に一致していないとエラーになります（片方が数値の 0 のときだけ例外）。
+そのため摂氏→華氏のように定数を加算する換算のような「原点をずらす変換」はこのエンジンでは表現できません。
+{x}*1.8+32 のように、単位を持つ量に裸の定数を足す・引く式は、宣言単位を無次元にしても必ずエラーになるので絶対に書かないでください。
+そうした依頼が来たら、代わりに次のどちらかにしてください。
+1. 定数の加減算が要らない部分だけを計算する（例: 比例部分のみ、差分・比較のみ）
+2. 入力をそのまま出力に渡す恒等式にして、note で「このエンジンでは原点をずらす換算を表現できません」と理由を説明する
+いずれの場合も、実際に単位検査を通る式だけを calcs に入れてください。
+
+説明文ではなく必ず propose_block ツールを呼んでください。`
 
 interface AiConfig {
   /** 'anthropic' は Messages API（Claude 直結、または同形式で応答する LiteLLM の /v1/messages）。
