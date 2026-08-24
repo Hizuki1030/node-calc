@@ -96,6 +96,8 @@ export const UNIT_QUANTITIES: UnitQuantity[] = [
       { symbol: 'min', label: '分', factor: 60 },
       { symbol: 'h', label: '時間', factor: 3600 },
       { symbol: 'day', label: '日', factor: 86400 },
+      // 暦の実際の日数（うるう年など）は見ず、1年 = 365日 = 8760h の固定倍率として扱う。
+      { symbol: 'year', label: '年', factor: 365 * 86400 },
     ],
   },
   {
