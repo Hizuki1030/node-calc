@@ -1,0 +1,1984 @@
+/* node-calc
+ *
+ * Figma のダーク UI に寄せた単一テーマ。
+ * 面と文字はニュートラルなグレーだけで組み、彩度は「意味のあるもの」に取っておく:
+ *   青 = 選択・主要操作 / ポートと配線 = 値ごとに配る色（--nc-port）/ 朱 = 破壊的操作とエラー
+ * ノードの外観はできるだけ素にして、色で追うのは配線だけにしている。
+ */
+
+:root {
+  --bg: #1e1e1e;
+  --surface: #2c2c2c;
+  --surface-2: #383838;
+  --surface-3: #4a4a4a;
+  --line: #3d3d3d;
+  --line-soft: #333333;
+  --text: #e6e6e6;
+  --muted: #b3b3b3;
+  --dim: #808080;
+
+  /* 選択・主要ボタンの青。旧テーマのティールの置き場所をそのまま引き継ぐ。 */
+  --teal: #0d99ff;
+  --teal-dim: #2a6f9e;
+  --amber: #ffb020;
+  --amber-dim: #6d5525;
+  --red: #f87171;
+  --red-dim: #7a3b38;
+
+  /* 未接続のポートの色。配線がつながると、その値の色で塗り替わる。 */
+  --port-idle: #5a5a5a;
+
+  --radius: 6px;
+  --sans: 'IBM Plex Sans', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.nc-fatal-error {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.nc-fatal-error section {
+  display: grid;
+  width: min(520px, 100%);
+  gap: 12px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--red-dim);
+  border-radius: 10px;
+}
+.nc-fatal-error h1 { margin: 0; color: var(--red); font-size: 18px; }
+.nc-fatal-error p { margin: 0; color: var(--muted); }
+.nc-fatal-error code { overflow-wrap: anywhere; color: var(--dim); font-size: 11px; }
+.nc-fatal-error .nc-btn { justify-self: start; }
+
+.nc-mono,
+.nc-num,
+.nc-mini,
+.nc-expr {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+}
+
+/* ---------------- 骨格 ---------------- */
+
+.nc-app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+.nc-topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.nc-topbar h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.nc-topbar h1 span {
+  color: var(--teal);
+}
+
+.nc-tagline {
+  margin: 0;
+  color: var(--dim);
+  font-size: 12px;
+  flex: 1;
+}
+
+.nc-project-name {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nc-project-actions { display: flex; gap: 4px; }
+.nc-project-actions .nc-btn { padding: 4px 8px; }
+.nc-project-message { color: var(--teal); font-size: 10px; }
+.nc-debug-csv-link {
+  flex: none;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nc-debug-csv-link:hover { color: var(--text); }
+.nc-project-modal {
+  display: grid;
+  gap: 12px;
+  width: min(430px, calc(100vw - 32px));
+  max-height: min(580px, calc(100vh - 60px));
+  overflow: auto;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / .55);
+}
+.nc-project-modal h2 { margin: 0; font-size: 15px; }
+.nc-project-name-input { width: 100%; font-size: 15px; }
+.nc-project-list { display: grid; gap: 6px; }
+.nc-project-row { display: flex; align-items: stretch; gap: 4px; }
+.nc-project-open {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-align: left;
+}
+.nc-project-open:hover { border-color: var(--teal-dim); }
+.nc-project-open small { color: var(--dim); font-size: 10px; }
+
+.nc-main {
+  display: grid;
+  grid-template-columns: 226px minmax(0, 1fr) 392px;
+  min-height: 0;
+}
+
+/* ---------------- 左: パレット ---------------- */
+
+.nc-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  min-height: 0;
+}
+
+/* アイコンと名前を 1 行に収めたいので、追加ボタンは縦に並べる。 */
+.nc-palette-top {
+  display: grid;
+  gap: 6px;
+}
+
+.nc-btn-new-block {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 9px 10px;
+  text-align: left;
+  background: color-mix(in srgb, var(--teal) 10%, var(--surface-2));
+  border: 1px solid var(--teal-dim);
+  border-radius: var(--radius);
+  color: var(--teal);
+  font-weight: 600;
+}
+.nc-btn-new-block:hover {
+  background: color-mix(in srgb, var(--teal) 16%, var(--surface-2));
+}
+.nc-btn-new-block small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+.nc-btn-table {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+.nc-btn-table:hover { background: var(--surface-3); }
+.nc-btn-table small { color: var(--muted); font-size: 9px; font-weight: 400; }
+
+.nc-library-title {
+  margin: 2px 0 -6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.nc-search {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+
+.nc-palette-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.nc-palette-list h3 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.nc-preset {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.nc-preset-btn {
+  flex: 1;
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  margin-bottom: 3px;
+}
+.nc-preset-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--line);
+}
+
+.nc-preset-title {
+  font-weight: 500;
+}
+.nc-preset-expr {
+  font-size: 10px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------- 中央: キャンバス ---------------- */
+
+.nc-canvas {
+  position: relative;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.react-flow__node {
+  font-size: 13px;
+}
+
+/* 配線の色は、その値を出している出力ポートの色。--nc-port はエッジごとに渡す。 */
+.react-flow__edge-path {
+  stroke: var(--nc-port, var(--port-idle));
+  stroke-width: 1.8;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 2.6;
+  filter: brightness(1.25);
+}
+.nc-edge.is-broken .react-flow__edge-path {
+  stroke: var(--red-dim);
+  stroke-dasharray: 4 3;
+}
+/* ネット名を付けた配線は線を引かない。両端のポートに付いた札が接続そのものを表す。
+ * どこへ行っているか確かめたいときと、ラベルを編集したいときのために、
+ * マウスを重ねるか選んだときだけ経路を浮かび上がらせる。 */
+.nc-edge.is-labeled .react-flow__edge-path,
+.nc-edge.is-labeled .react-flow__edge-textwrapper {
+  opacity: 0;
+}
+.nc-edge.is-labeled:hover .react-flow__edge-path,
+.nc-edge.is-labeled.selected .react-flow__edge-path {
+  opacity: 0.9;
+  stroke-dasharray: 3 6;
+}
+.nc-edge.is-labeled:hover .react-flow__edge-textwrapper,
+.nc-edge.is-labeled.selected .react-flow__edge-textwrapper {
+  opacity: 1;
+}
+.react-flow__edge-text {
+  paint-order: stroke;
+  stroke: var(--surface-2);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+.react-flow__controls-button {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  fill: var(--text);
+}
+.react-flow__controls-button:hover {
+  background: var(--surface-3);
+}
+
+/* ---------------- ノード共通 ---------------- */
+
+.nc-node {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.28), 0 6px 16px rgb(0 0 0 / 0.22);
+}
+.nc-node.is-selected {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 1px var(--teal), 0 6px 16px rgb(0 0 0 / 0.26);
+}
+
+.nc-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 6px 5px 9px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  background: var(--surface-2);
+}
+
+.nc-title {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.nc-title:hover {
+  border-color: var(--line);
+}
+.nc-title:focus {
+  background: var(--bg);
+  border-color: var(--teal-dim);
+  outline: none;
+}
+
+.nc-x,
+.nc-add {
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  padding: 1px 4px;
+  border-radius: 4px;
+  line-height: 1.2;
+}
+.nc-x:hover {
+  color: var(--red);
+  background: var(--surface-3);
+}
+.nc-add:hover {
+  color: var(--teal);
+  background: var(--surface-3);
+}
+
+.nc-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 6px 3px 9px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.nc-handle {
+  /* React Flow は左右で符号の違う translate でハンドルを枠線に載せている。
+     拡大時にこれを消すと掴んだ瞬間に位置が飛ぶので、変数にして必ず合成する。 */
+  --nc-handle-shift: translate(50%, -50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid var(--bg);
+  background: var(--nc-port, var(--port-idle));
+  cursor: crosshair;
+  touch-action: none;
+  z-index: 5;
+  transform: var(--nc-handle-shift);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.react-flow__handle-left.nc-handle {
+  --nc-handle-shift: translate(-50%, -50%);
+}
+/* 当たり判定を少しだけ広げる。行間より大きくすると隣のポートを掴んでしまうため、
+   入力ポート1行（24px）に収まる範囲に留める。 */
+.nc-handle::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+}
+.nc-handle:hover,
+.nc-handle.connecting,
+.nc-handle.valid {
+  transform: var(--nc-handle-shift) scale(1.2);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--nc-port, var(--muted)) 22%, transparent);
+}
+.nc-handle-add-input {
+  width: 22px;
+  height: 22px;
+  background: var(--bg);
+  border-color: var(--teal);
+}
+.nc-handle-add-input::before {
+  content: '+';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--teal);
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.nc-unit {
+  color: var(--dim);
+  font-size: 11px;
+  font-style: normal;
+  margin-left: 3px;
+}
+
+.nc-val {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  min-width: 54px;
+}
+.nc-val-strong {
+  color: var(--teal);
+  font-size: 12px;
+}
+
+/* ---------------- 変数ノード ---------------- */
+
+.nc-var {
+  width: 208px;
+}
+.nc-var-compact {
+  width: 166px;
+  min-height: 76px;
+  padding-bottom: 9px;
+}
+.nc-var-compact .nc-compact-title { padding-bottom: 4px; }
+.nc-var-compact-value {
+  padding: 0 14px;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 500;
+}
+.nc-var-compact-value em { margin-left: 4px; color: var(--dim); font-size: 10px; font-style: normal; }
+.nc-var-mode {
+  display: inline-block;
+  margin: 7px 14px 0;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--dim);
+  font-size: 9px;
+}
+
+.nc-var-body {
+  display: grid;
+  gap: 6px;
+  padding: 8px 9px 4px;
+}
+
+.nc-var-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.nc-num,
+.nc-text,
+.nc-mini,
+.nc-select,
+.nc-textarea {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+.nc-num:focus,
+.nc-text:focus,
+.nc-mini:focus,
+.nc-expr:focus,
+.nc-name:focus,
+.nc-textarea:focus {
+  border-color: var(--teal);
+  outline: none;
+}
+
+.nc-var-value .nc-num {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--amber);
+}
+
+.nc-var-range {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 4px;
+  align-items: center;
+}
+.nc-mini {
+  font-size: 10px;
+  padding: 2px 4px;
+  color: var(--dim);
+  width: 100%;
+}
+
+.nc-chip {
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--dim);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+}
+.nc-chip.is-on {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+  color: #ffe6cd;
+}
+
+.nc-slider {
+  width: 100%;
+  accent-color: var(--nc-port, var(--amber));
+  height: 16px;
+}
+
+.nc-port-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+}
+.nc-port-out {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line-soft);
+}
+.nc-port-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--amber);
+}
+
+/* ---------------- ブロックノード ---------------- */
+
+.nc-block {
+  width: 430px;
+}
+
+.nc-block-compact {
+  width: var(--nc-block-width, 440px);
+  min-height: 86px;
+  overflow: visible;
+}
+.nc-compact-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 14px 5px;
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ノードの種類を示すアイコン。文字より一段落として、名前を邪魔しない。 */
+.nc-node-icon {
+  flex: none;
+  color: var(--dim);
+}
+.nc-head-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* パレットのボタンでは行の頭に置く */
+.nc-btn .nc-node-icon,
+.nc-btn span .nc-node-icon {
+  margin-right: 5px;
+  vertical-align: -2px;
+}
+.nc-compact-inputs {
+  display: grid;
+  gap: 1px;
+  padding: 2px 0 3px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+.nc-compact-port {
+  position: relative;
+  min-height: 24px;
+  padding: 4px 12px 4px 15px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.nc-input-unit { margin-left: 5px; color: var(--dim); font-size: 9px; }
+.nc-compact-port .nc-handle { top: 50%; }
+.nc-compact-formula {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: visible;
+  min-height: 54px;
+  padding: 11px 22px 11px 14px;
+  color: var(--text);
+  font-size: var(--nc-formula-size, 13px);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.nc-compact-formula.has-power {
+  min-height: 66px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+.nc-compact-formula.has-fraction {
+  min-height: 116px;
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+.nc-compact-formulas { padding: 3px 0 7px; }
+.nc-compact-formula + .nc-compact-formula { border-top: 1px solid var(--line-soft); }
+.nc-compact-formula .nc-katex {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  gap: 9px;
+  width: 0;
+  min-width: 0;
+  padding: 8px 0;
+  overflow: hidden;
+  font-size: 1em;
+  line-height: 1.2;
+}
+.nc-math-lhs {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 1.28em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.nc-math-lhs > span { color: var(--muted); font-weight: 500; }
+.nc-math-expression { display: inline-block; min-width: 0; color: var(--text); }
+.nc-compact-formula .nc-math-expression {
+  display: block;
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.nc-compact-formula.has-fraction .nc-katex { padding-top: 16px; padding-bottom: 16px; }
+.nc-compact-formula .katex { font-size: 1em; }
+.nc-compact-formula .katex-html { overflow: visible; }
+.nc-compact-formula .nc-katex.is-fit .nc-math-expression > .katex {
+  display: inline-block;
+  max-width: none;
+  transform: scale(var(--nc-math-scale, 1));
+  transform-origin: left center;
+}
+.nc-compact-formula .nc-handle { top: 50%; }
+.nc-compact-calc-unit { flex: none; margin-left: auto; color: var(--dim); font-size: 9px; }
+.nc-compact-formula.has-error {
+  color: var(--red);
+}
+
+.nc-save {
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+  border: 1px solid var(--teal-dim);
+  border-radius: 4px;
+  color: var(--teal);
+  padding: 2px 7px;
+  font-size: 10px;
+}
+.nc-save:hover {
+  background: color-mix(in srgb, var(--teal) 18%, transparent);
+}
+
+.nc-block-note {
+  display: block;
+  width: calc(100% - 18px);
+  margin: 7px 9px 2px;
+  padding: 4px 6px;
+  resize: vertical;
+  overflow: hidden;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.nc-block-note:hover,
+.nc-block-note:focus {
+  background: var(--bg);
+  border-color: var(--line);
+  outline: none;
+}
+
+.nc-calc-label small {
+  margin-left: 5px;
+  color: var(--dim);
+  font-size: 9px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.nc-in-row .nc-name {
+  flex: 1;
+}
+
+.nc-name,
+.nc-expr {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 4px;
+  min-width: 0;
+}
+.nc-name:hover,
+.nc-expr:hover {
+  border-color: var(--line);
+}
+.nc-name:focus,
+.nc-expr:focus {
+  background: var(--bg);
+}
+
+.nc-calc-row {
+  position: relative;
+  padding: 4px 9px 5px;
+  border-top: 1px solid var(--line-soft);
+}
+.nc-calc-row.has-error {
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+}
+
+.nc-calc-main {
+  display: grid;
+  grid-template-columns: 104px 12px minmax(0, 1fr);
+  align-items: start;
+  gap: 4px;
+}
+.nc-calc-main .nc-name {
+  width: 100%;
+  color: var(--text);
+  font-weight: 500;
+}
+.nc-eq {
+  color: var(--dim);
+}
+.nc-calc-main .nc-expr {
+  flex: 1;
+  color: var(--teal);
+  font-size: 12px;
+}
+
+/* ---------------- 式エディター ---------------- */
+
+.nc-fed {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nc-fed .nc-expr {
+  flex: none;
+  width: 100%;
+  color: var(--teal);
+  font-size: 12px;
+  min-height: 46px;
+  padding: 6px 7px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.nc-fed-view {
+  min-height: 16px;
+  padding: 0 2px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+.nc-fed:focus-within .nc-fed-view {
+  color: var(--text);
+}
+
+.nc-fed.is-program .nc-expr {
+  min-height: 164px;
+  font-family: var(--mono);
+  line-height: 1.7;
+}
+.nc-fed.is-program .nc-fed-view {
+  min-height: 28px;
+  padding: 7px 9px;
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  white-space: normal;
+}
+.nc-fed-program-preview { display: grid; gap: 7px; }
+.nc-fed-program-preview > .nc-katex { display: flex; align-items: center; gap: 8px; min-height: 34px; line-height: 1.8; }
+.nc-fed-error,
+.nc-program-error { color: #ff9aa6; font-size: 11px; }
+.nc-program-error { margin: 0; }
+
+.nc-fed-empty {
+  color: var(--dim);
+}
+
+.nc-formula .nc-f-num {
+  color: var(--amber);
+}
+.nc-formula .nc-f-fn {
+  color: var(--teal);
+  font-weight: 500;
+}
+.nc-formula .nc-f-ref {
+  color: #8ab4ff;
+}
+.nc-formula .nc-f-op {
+  color: var(--dim);
+}
+.nc-formula .nc-f-paren {
+  color: var(--dim);
+}
+.nc-formula .nc-f-err {
+  color: var(--red);
+  text-decoration: underline wavy var(--red);
+}
+.nc-formula sup {
+  font-size: 0.72em;
+  color: var(--dim);
+}
+
+.nc-fed-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding-top: 1px;
+}
+.nc-fed-palette .nc-fed-ref {
+  color: #8ab4ff;
+  border-color: color-mix(in srgb, #8ab4ff 35%, var(--line));
+}
+.nc-fed-palette button {
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+.nc-fed-palette button:hover {
+  color: var(--text);
+  border-color: var(--teal-dim);
+}
+.nc-fed-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 1px 2px;
+}
+
+.nc-calc-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding-left: 2px;
+}
+
+.nc-expose {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--dim);
+  font-size: 10px;
+  padding: 1px 7px;
+}
+.nc-expose.is-on {
+  border-color: var(--teal-dim);
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 12%, transparent);
+}
+
+.nc-row-tools {
+  display: flex;
+  gap: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.nc-calc-row:hover .nc-row-tools,
+.nc-row-tools:focus-within {
+  opacity: 1;
+}
+.nc-calc-foot .nc-val {
+  margin-left: auto;
+}
+
+.nc-row-unit {
+  width: 48px;
+  padding: 1px 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--dim);
+  font-size: 10px;
+  text-align: right;
+}
+.nc-row-unit:hover,
+.nc-row-unit:focus {
+  background: var(--bg);
+  border-color: var(--line);
+  outline: none;
+}
+
+.nc-port-setting {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.nc-port-setting .nc-text {
+  flex: 1;
+}
+.nc-port-setting .nc-unit-picker { flex: 0 0 140px; }
+.nc-unit-picker { position: relative; min-width: 0; }
+.nc-unit-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1px 6px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 7px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  text-align: left;
+}
+.nc-unit-trigger > span { overflow: hidden; color: var(--teal); font-family: var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.nc-unit-trigger > small { grid-column: 1; overflow: hidden; color: var(--dim); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.nc-unit-trigger > i { grid-column: 2; grid-row: 1 / 3; color: var(--dim); font-style: normal; }
+.nc-unit-trigger:hover,
+.nc-unit-trigger[aria-expanded='true'] { border-color: var(--teal); }
+.nc-unit-trigger.is-required { border-color: var(--red-dim); color: #ff9aa6; }
+.nc-unit-trigger.is-required > span { color: #ff9aa6; font-family: var(--sans); font-size: 10px; }
+.nc-unit-popover {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 5px);
+  right: 0;
+  display: grid;
+  width: min(350px, calc(100vw - 48px));
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--teal-dim);
+  border-radius: 8px;
+  box-shadow: 0 16px 42px rgb(0 0 0 / .65);
+}
+.nc-unit-popover.is-up { top: auto; bottom: calc(100% + 5px); }
+.nc-unit-search-row { display: grid; grid-template-columns: 1fr auto; gap: 4px; padding-bottom: 7px; }
+.nc-unit-options { max-height: 310px; overflow: auto; padding-right: 3px; }
+.nc-unit-options section { margin-bottom: 9px; }
+.nc-unit-picker h5 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 2px 0 4px;
+  color: var(--dim);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .08em;
+}
+/* その量の SI 基準単位。表記はすべてこれに対する倍率で決まる。 */
+.nc-unit-picker h5 em { color: var(--muted); font-family: var(--mono); font-size: 9px; font-style: normal; }
+.nc-unit-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.nc-unit-chip {
+  padding: 3px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.nc-unit-chip:hover { background: var(--surface-3); }
+/* SI の基準単位そのものは太字にして、どれが基準かを分かるようにする。 */
+.nc-unit-chip.is-base { color: var(--teal); border-color: var(--teal-dim); }
+.nc-unit-chip.is-selected { background: color-mix(in srgb, var(--teal) 18%, var(--surface-2)); border-color: var(--teal); color: #ffffff; }
+/* 今の単位と同じ量の表記は、探さずに切り替えられるよう上に固定する。 */
+.nc-unit-notations { padding: 0 0 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+.nc-unit-custom { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.nc-unit-custom > label { color: var(--dim); font-size: 9px; }
+.nc-unit-custom > div { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
+.nc-unit-custom small { color: #ff9aa6; font-size: 9px; }
+.nc-text.is-required { border-color: var(--red-dim); background: color-mix(in srgb, var(--red) 7%, var(--bg)); }
+.nc-connected-input {
+  display: block;
+  width: 100%;
+  padding: 5px 7px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: #8ab4ff;
+  font-family: var(--mono);
+}
+.nc-block-setting-calc {
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+.nc-calc-stack { display: grid; gap: 8px; }
+.nc-assignment-head { display: grid; grid-template-columns: minmax(100px, 1fr) auto 140px; align-items: center; gap: 6px; }
+.nc-assignment-head > span { color: var(--teal); font-family: var(--mono); font-size: 16px; }
+.nc-calc-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
+.nc-calc-row-actions .nc-expose { margin-right: auto; }
+.nc-calc-settings { display: grid; gap: 5px; }
+.nc-calc-setting-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) 140px auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+}
+.nc-calc-setting-row code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--teal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nc-modal-backdrop {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 0.42);
+}
+.nc-block-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(980px, 100%);
+  max-height: min(760px, calc(100vh - 100px));
+  overflow: auto;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--teal-dim);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.55);
+}
+.nc-modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.nc-modal-head p {
+  margin: 0 0 3px;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+.nc-modal-title {
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+}
+.nc-modal-title:focus { outline: none; }
+.nc-modal-columns {
+  display: grid;
+  grid-template-columns: minmax(240px, .65fr) minmax(420px, 1.35fr);
+  gap: 16px;
+}
+.nc-modal-columns .nc-sub { margin-top: 0; }
+.nc-modal-stack { display: grid; gap: 6px; }
+.nc-sub small { color: var(--dim); font-size: 10px; font-weight: 400; }
+.nc-ai-designer { display: grid; grid-template-columns: 1fr auto; gap: 7px; padding: 10px; background: color-mix(in srgb, #9b87f5 8%, var(--surface-2)); border: 1px solid color-mix(in srgb, #9b87f5 35%, var(--line)); border-radius: var(--radius); }
+.nc-ai-head { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; }
+.nc-ai-head strong { color: #b9aaff; }
+.nc-ai-head span { color: var(--dim); font-size: 10px; }
+.nc-ai-designer .nc-textarea { resize: vertical; }
+.nc-btn-ai { align-self: stretch; border-color: #685a9a; color: #c9beff; }
+.nc-ai-proposal { grid-column: 1 / -1; display: grid; gap: 7px; padding: 10px; background: var(--bg); border: 1px solid #685a9a; border-radius: var(--radius); color: var(--muted); }
+.nc-ai-proposal > .nc-katex { display: block; color: var(--text); }
+.nc-ai-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.nc-unit-errors { display: grid; gap: 3px; padding: 9px 11px; background: color-mix(in srgb, var(--red) 8%, var(--surface-2)); border: 1px solid var(--red-dim); border-radius: var(--radius); }
+.nc-unit-errors strong { color: #ff9aa6; }
+.nc-unit-errors p { margin: 0; color: #eab0b7; font-size: 11px; }
+.nc-katex .katex { font-size: 1em; }
+.nc-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-top: 2px;
+}
+.nc-modal-foot { display: flex; justify-content: space-between; gap: 8px; }
+
+/* ---------------- CSVテーブル変換 ---------------- */
+
+.nc-table {
+  width: 300px;
+  overflow: visible;
+}
+.nc-table-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 7px;
+  color: var(--dim);
+  font-size: 9px;
+}
+.nc-table-meta > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nc-table-meta b { color: var(--muted); font-weight: 500; }
+.nc-table-meta em { padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--dim); font-style: normal; }
+.nc-table-inputs { display: grid; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.nc-table-port {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 27px;
+  gap: 5px;
+  padding: 4px 11px 4px 16px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.nc-table-port + .nc-table-port { border-top: 1px solid var(--line-soft); }
+.nc-table-port small,
+.nc-table-output small { color: var(--dim); font-size: 9px; }
+.nc-table-port .nc-handle { top: 50%; }
+.nc-table-output {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 45px;
+  padding: 8px 16px 9px 12px;
+}
+.nc-table-output > div { display: flex; gap: 4px; align-items: baseline; color: var(--text); }
+.nc-table-output > strong { color: var(--text); font-size: 14px; }
+.nc-table-output .nc-handle { top: 50%; }
+
+.nc-table-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  width: min(1040px, 100%);
+  max-height: min(800px, calc(100vh - 80px));
+  overflow: auto;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid #65558d;
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.55);
+}
+.nc-table-import {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  background: color-mix(in srgb, #b79cff 8%, var(--surface-2));
+  border: 1px dashed #65558d;
+  border-radius: var(--radius);
+}
+.nc-table-import > div { display: grid; gap: 2px; }
+.nc-table-import strong { color: #c9b9ff; }
+.nc-table-import span,
+.nc-table-message { color: var(--dim); font-size: 10px; }
+.nc-table-message { margin: -6px 2px 0; }
+.nc-table-mode-row { display: grid; grid-template-columns: 100px minmax(240px, 1fr) 1.5fr; align-items: center; gap: 8px; }
+.nc-table-mode-row > label { color: var(--muted); font-size: 11px; }
+.nc-table-mode-row > small { color: var(--dim); font-size: 10px; line-height: 1.4; }
+.nc-table-mapping { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; }
+.nc-table-mapping .nc-sub { margin-top: 0; }
+.nc-table-map-list { display: grid; gap: 6px; margin-bottom: 7px; }
+.nc-table-map-row { display: grid; grid-template-columns: minmax(100px, 1fr) 115px minmax(130px, 1fr) auto; gap: 6px; align-items: center; }
+.nc-table-output-map { display: grid; grid-template-columns: minmax(90px, 1fr) 105px; gap: 6px; }
+.nc-table-output-map .nc-select { grid-column: 1 / -1; }
+.nc-table-digits { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 10px; }
+.nc-table-digits .nc-num { width: 90px; }
+.nc-table-preview { overflow: auto; max-height: 230px; border: 1px solid var(--line); border-radius: var(--radius); }
+.nc-table-preview table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
+.nc-table-preview th { position: sticky; top: 0; z-index: 1; background: var(--surface-3); color: #c9b9ff; text-align: right; }
+.nc-table-preview th,
+.nc-table-preview td { padding: 5px 8px; border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); text-align: right; white-space: nowrap; }
+.nc-table-preview small { display: block; padding: 5px 8px; color: var(--dim); }
+.nc-btn-danger { color: #ff9aa6; }
+.nc-btn-primary { background: var(--teal); color: #ffffff; border-color: var(--teal); }
+.nc-inverse-setting { display: grid; gap: 7px; }
+.nc-solve-actions { display: flex; gap: 6px; }
+.nc-solve-actions .nc-btn-solve { flex: 1; }
+.nc-solve-progress {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--teal-dim);
+  border-radius: var(--radius);
+}
+.nc-solve-progress > div { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.nc-solve-progress strong { color: var(--teal); }
+.nc-solve-progress progress { width: 100%; height: 7px; accent-color: var(--teal); }
+.nc-solve-progress small { color: var(--dim); text-align: right; }
+.nc-inverse-answer { display: grid; gap: 8px; padding: 11px; background: var(--surface-2); border: 1px solid var(--teal-dim); border-radius: var(--radius); }
+.nc-inverse-answer strong { color: var(--teal); font-size: 16px; }
+.nc-hit { margin: 0; color: var(--teal); font-size: 11px; }
+.nc-generated-formula { padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; color: var(--teal); overflow-wrap: anywhere; }
+
+.nc-variable-modal,
+.nc-monitor-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  width: min(440px, 100%);
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / .55);
+}
+/* モーダルの中では、右パネル用の見出しは重複するので隠す。 */
+.nc-monitor-modal > .nc-sub { display: none; }
+.nc-monitor-modal .nc-field-row { gap: 10px; }
+.nc-mode-choice { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.nc-mode-choice button {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  text-align: left;
+}
+.nc-mode-choice button.is-active { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, var(--surface-2)); color: var(--text); }
+.nc-mode-choice small { color: var(--dim); font-size: 10px; }
+.nc-variable-config { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 9px; }
+.nc-variable-config > label { color: var(--muted); font-size: 11px; }
+.nc-variable-config > .nc-slider { grid-column: 1 / -1; }
+
+.nc-node-error,
+.nc-row-error {
+  color: #ff9aa6;
+  font-size: 11px;
+  padding: 3px 9px;
+}
+.nc-node-error {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  border-bottom: 1px solid var(--red-dim);
+}
+
+/* ---------------- 結果ノード ---------------- */
+
+.nc-result {
+  width: 186px;
+}
+
+.nc-result-value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 500;
+  padding: 8px 10px 2px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.nc-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 8px;
+}
+.nc-target label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.nc-target .nc-num {
+  flex: 1;
+  color: var(--text);
+}
+
+.nc-gap {
+  padding: 4px 10px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+.nc-gap.is-hit {
+  color: var(--teal);
+}
+
+/* ---------------- モニターノード ---------------- */
+
+.nc-monitor {
+  width: 180px;
+}
+.nc-monitor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 8px 3px 11px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.nc-monitor-value {
+  padding: 3px 12px 11px;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.nc-monitor-value em {
+  margin-left: 5px;
+  color: var(--dim);
+  font-size: 11px;
+  font-style: normal;
+}
+.nc-monitor-pie { width: 500px; }
+.nc-monitor-port-list {
+  display: grid;
+  padding: 4px 0 7px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+.nc-monitor-port {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 27px;
+  gap: 7px;
+  padding: 4px 10px 4px 16px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.nc-monitor-port .nc-handle { top: 50%; }
+.nc-monitor-warning {
+  margin: 9px;
+  padding: 8px 9px;
+  background: color-mix(in srgb, var(--red) 10%, var(--surface-2));
+  border: 1px solid var(--red-dim);
+  border-radius: 4px;
+  color: #ffadb8;
+  font-size: 10px;
+}
+.nc-pie-body {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  min-height: 310px;
+  padding: 18px 20px 22px;
+}
+.nc-pie-chart {
+  position: relative;
+  justify-self: center;
+  width: 276px;
+  aspect-ratio: 1;
+  border: 2px solid color-mix(in srgb, #8ab4ff 42%, var(--line));
+  border-radius: 50%;
+  box-shadow: 0 14px 32px rgb(0 0 0 / .34), inset 0 0 0 1px rgb(255 255 255 / .08);
+}
+.nc-pie-chart::after {
+  content: '';
+  position: absolute;
+  inset: 39%;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+  box-shadow: 0 3px 12px rgb(0 0 0 / .32);
+}
+.nc-pie-chart > span {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  place-items: center;
+  color: var(--text);
+  text-align: center;
+}
+.nc-pie-chart > span strong { max-width: 88px; overflow: hidden; color: var(--text); font-size: 15px; line-height: 1.1; text-overflow: ellipsis; }
+.nc-pie-chart > span small { max-width: 82px; overflow: hidden; color: var(--dim); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.nc-pie-legend { display: grid; align-content: center; gap: 8px; min-width: 0; max-height: 286px; overflow-y: auto; padding-right: 4px; }
+.nc-pie-legend > div { display: grid; grid-template-columns: 13px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 27px; padding: 4px 0; border-bottom: 1px solid var(--line-soft); font-size: 11px; }
+.nc-pie-legend i { width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); }
+.nc-pie-legend span { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.nc-pie-legend strong { color: var(--text); font-size: 11px; }
+.nc-monitor-input-settings { display: grid; gap: 5px; }
+.nc-monitor-input-settings > div { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 5px; }
+.nc-monitor-input-settings > div > span { color: var(--dim); font-size: 10px; }
+.nc-monitor-input-settings .nc-btn { justify-self: start; }
+
+/* 配線ラベルは、ポートから配線と同じように引き出した荷札として描く。
+ * 札はノードの外に出し、ハンドルまでを配線と同じ色・太さの引き出し線でつなぐ。
+ * 引き出し線は札の背景の一部として描くので、要素は 1 つで済む（配置は絶対座標）。
+ * -in は入力ポート（ノードの左外）、-out は出力ポート（ノードの右外）。 */
+.nc-net-label {
+  /* ハンドル中心から札の胴までの距離。ハンドルの半径 8px を含む。 */
+  --nc-net-lead: 22px;
+  --nc-net-fill: color-mix(in srgb, var(--nc-port, var(--muted)) 30%, var(--surface-2));
+  --nc-net-wire: var(--nc-port, var(--port-idle));
+  position: absolute;
+  top: 50%;
+  z-index: 6;
+  max-width: 118px;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateY(-50%);
+  /* ハンドルの掴み判定に重ならないよう、札自体は当たり判定を持たない。 */
+  pointer-events: none;
+}
+/* 紐通しの穴 */
+.nc-net-label::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin-top: -1.5px;
+  background: var(--bg);
+  border-radius: 50%;
+}
+
+/* 入力ポート: ノードの左外に置き、右へ引き出し線を伸ばしてハンドルへつなぐ。 */
+.nc-net-label-in {
+  right: 100%;
+  padding: 2px calc(var(--nc-net-lead) + 12px) 2px 8px;
+  border-radius: 3px 0 0 3px;
+  background:
+    linear-gradient(var(--nc-net-wire), var(--nc-net-wire)) no-repeat right center / var(--nc-net-lead) 2px,
+    linear-gradient(var(--nc-net-fill), var(--nc-net-fill)) no-repeat left center / calc(100% - var(--nc-net-lead)) 100%;
+  /* 胴の先を尖らせ、その先端をそのまま引き出し線につなげる。 */
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--nc-net-lead) - 9px) 0,
+    calc(100% - var(--nc-net-lead)) calc(50% - 1px),
+    100% calc(50% - 1px),
+    100% calc(50% + 1px),
+    calc(100% - var(--nc-net-lead)) calc(50% + 1px),
+    calc(100% - var(--nc-net-lead) - 9px) 100%,
+    0 100%
+  );
+}
+.nc-net-label-in::before { right: calc(var(--nc-net-lead) + 5px); }
+
+/* 出力ポート: ノードの右外。左へ引き出し線を伸ばす。 */
+.nc-net-label-out {
+  left: 100%;
+  padding: 2px 8px 2px calc(var(--nc-net-lead) + 12px);
+  border-radius: 0 3px 3px 0;
+  background:
+    linear-gradient(var(--nc-net-wire), var(--nc-net-wire)) no-repeat left center / var(--nc-net-lead) 2px,
+    linear-gradient(var(--nc-net-fill), var(--nc-net-fill)) no-repeat right center / calc(100% - var(--nc-net-lead)) 100%;
+  clip-path: polygon(
+    100% 0,
+    calc(var(--nc-net-lead) + 9px) 0,
+    var(--nc-net-lead) calc(50% - 1px),
+    0 calc(50% - 1px),
+    0 calc(50% + 1px),
+    var(--nc-net-lead) calc(50% + 1px),
+    calc(var(--nc-net-lead) + 9px) 100%,
+    100% 100%
+  );
+}
+.nc-net-label-out::before { left: calc(var(--nc-net-lead) + 5px); }
+
+/* ---------------- 右: サイドパネル ---------------- */
+
+.nc-side {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  min-height: 0;
+}
+
+.nc-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+.nc-tabs button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 9px 4px;
+  color: var(--dim);
+}
+.nc-tabs button:hover {
+  color: var(--text);
+}
+.nc-tabs button.is-active {
+  color: var(--text);
+  border-bottom-color: var(--teal);
+}
+
+.nc-side-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.nc-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.nc-sub {
+  margin: 4px 0 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.nc-field-row {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.nc-field-row label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.nc-field-row .nc-num,
+.nc-field-row .nc-text,
+.nc-field-row .nc-select {
+  width: 100%;
+}
+
+.nc-range-note {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.nc-hint,
+.nc-note,
+.nc-warn {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.nc-note {
+  color: var(--muted);
+}
+.nc-warn {
+  color: #ffbfa0;
+  border-left: 2px solid var(--amber-dim);
+  padding-left: 8px;
+}
+.nc-hint code {
+  font-family: var(--mono);
+  background: var(--surface-3);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.nc-unit-summary { display: grid; gap: 3px; padding: 12px; border: 1px solid var(--red-dim); border-radius: var(--radius); background: color-mix(in srgb, var(--red) 8%, var(--surface-2)); }
+.nc-unit-summary strong { color: #ff9aa6; }
+.nc-unit-summary span { color: var(--muted); font-size: 11px; }
+.nc-unit-summary.is-ok { border-color: var(--teal-dim); background: color-mix(in srgb, var(--teal) 8%, var(--surface-2)); }
+.nc-unit-summary.is-ok strong { color: var(--teal); }
+.nc-unit-issue-list { display: grid; gap: 6px; }
+.nc-unit-issue-list button { display: grid; gap: 2px; padding: 8px 9px; background: var(--surface-2); border: 1px solid var(--line); border-left-color: var(--red); border-radius: var(--radius); color: var(--text); text-align: left; }
+.nc-unit-issue-list button:hover { background: var(--surface-3); }
+.nc-unit-issue-list button span { color: var(--muted); font-size: 11px; line-height: 1.45; }
+
+@media (max-width: 900px) {
+  .nc-modal-columns { grid-template-columns: 1fr; }
+  .nc-ai-designer { grid-template-columns: 1fr; }
+  .nc-ai-designer > * { grid-column: 1; }
+  .nc-table-mapping { grid-template-columns: 1fr; }
+  .nc-table-mode-row { grid-template-columns: 1fr; }
+}
+
+.nc-btn {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+}
+.nc-btn:hover {
+  background: var(--surface-3);
+}
+.nc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.nc-btn-primary {
+  border-color: var(--teal-dim);
+  color: var(--teal);
+}
+.nc-btn-solve {
+  border-color: var(--red-dim);
+  color: #ffb2bc;
+}
+.nc-btn-var,
+.nc-btn-res,
+.nc-btn-monitor {
+  border-left: 1px solid var(--line);
+}
+.nc-btn-ghost {
+  background: transparent;
+  color: var(--dim);
+}
+
+.nc-btn-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.nc-btn-row .nc-btn {
+  flex: 1;
+  white-space: nowrap;
+}
+
+/* ---------------- スライダー卓 ---------------- */
+
+.nc-slider-block {
+  display: grid;
+  gap: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-left: 2px solid var(--nc-port, var(--amber));
+  border-radius: var(--radius);
+  padding: 7px 9px;
+}
+.nc-slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.nc-slider-head strong {
+  color: var(--nc-port, var(--amber));
+  font-weight: 500;
+}
+.nc-slider-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+/* ---------------- グラフ ---------------- */
+
+.nc-chart {
+  width: 100%;
+  height: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.nc-grid {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+.nc-axis-line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.nc-axis {
+  fill: var(--dim);
+  font-family: var(--mono);
+  font-size: 8.5px;
+}
+.nc-line {
+  fill: none;
+  stroke: var(--teal);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+.nc-target-line {
+  stroke: var(--red);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 3;
+}
+.nc-current {
+  stroke: var(--amber);
+  stroke-width: 1.2;
+}
+.nc-sol-band {
+  fill: color-mix(in srgb, var(--red) 22%, transparent);
+}
+.nc-sol-line {
+  stroke: var(--red);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.nc-legend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--dim);
+}
+.nc-legend span {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin-left: 6px;
+}
+.nc-legend .k-line {
+  background: var(--teal);
+}
+.nc-legend .k-target {
+  background: var(--red);
+}
+.nc-legend .k-current {
+  background: var(--amber);
+}
+
+/* ---------------- 逆算の解 ---------------- */
+
+.nc-solutions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.nc-sol {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--red-dim);
+  border-radius: var(--radius);
+  padding: 7px 9px;
+}
+.nc-sol:hover {
+  border-left-color: var(--red);
+  background: var(--surface-3);
+}
+.nc-sol-main {
+  font-size: 14px;
+  color: #ffd5da;
+}
+.nc-sol-tag {
+  align-self: center;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.nc-sol-tag.is-warn {
+  color: var(--amber);
+  border-color: var(--amber-dim);
+}
+.nc-sol-note {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ---------------- 関数一覧 ---------------- */
+
+.nc-fnlist {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.nc-fnlist dt {
+  color: var(--teal);
+  font-size: 11.5px;
+}
+.nc-fnlist dd {
+  margin: 1px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.nc-textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+/* ---------------- 書き出しプレビュー ---------------- */
+
+.nc-sheet-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.nc-sheet {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+}
+.nc-sheet th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  font-weight: 500;
+  color: var(--dim);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+.nc-sheet td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+  white-space: nowrap;
+}
+.nc-rownum {
+  color: var(--dim);
+  text-align: right;
+  width: 26px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.nc-sheet .is-title td,
+.nc-sheet .is-section td {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--surface-2);
+}
+.nc-sheet .is-variable td {
+  background: color-mix(in srgb, var(--amber) 9%, transparent);
+}
+.nc-sheet .is-output td,
+.nc-sheet .is-result td {
+  background: color-mix(in srgb, var(--teal) 9%, transparent);
+}
+.nc-sheet .is-blank td {
+  height: 6px;
+  border-bottom: none;
+}
+.nc-formula {
+  color: var(--teal);
+}
+.nc-dim {
+  color: var(--dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

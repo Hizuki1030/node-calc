@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>比較用（素のページ）</title>
+    <script type="module" src="/dev/perf-probe.ts"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 40px;
+        background: #10151c;
+        color: #dbe6f2;
+        font-family: 'Hiragino Sans', system-ui, sans-serif;
+      }
+      h1 { font-size: 18px; }
+      p { color: #8fa3ba; font-size: 13px; line-height: 1.8; }
+      textarea {
+        width: 100%;
+        max-width: 640px;
+        height: 140px;
+        padding: 12px;
+        border: 1px solid #2a3644;
+        border-radius: 8px;
+        background: #171e27;
+        color: #dbe6f2;
+        font-family: inherit;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>比較用：アプリの中身が一切ないページ</h1>
+    <p>
+      ここで日本語を入力してください。アプリ側と同じ計測が動いています。<br />
+      ここが軽ければ原因はアプリ側、ここも重ければ原因はブラウザ・拡張機能・OS 側です。
+    </p>
+    <textarea class="nc-textarea" placeholder="ここに日本語を入力してください"></textarea>
+  </body>
+</html>

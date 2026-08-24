@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>node-calc デバッグ用CSV</title>
+  <style>
+    body { max-width: 720px; margin: 40px auto; padding: 0 20px; background: #10151c; color: #d9e2ec; font: 15px system-ui, sans-serif; }
+    h1 { font-size: 22px; }
+    p { color: #8d9aaa; }
+    ul { display: grid; gap: 10px; padding: 0; list-style: none; }
+    a { display: block; padding: 12px 14px; background: #19212b; border: 1px solid #39495c; border-radius: 6px; color: #8ab4ff; text-decoration: none; }
+    a:hover { background: #202b37; }
+  </style>
+</head>
+<body>
+  <h1>デバッグ用CSV</h1>
+  <p>クリックするとCSVをダウンロードします。すべて架空のDCDC効率データです。</p>
+  <ul>
+    <li><a href="dcdc_efficiency_grid.csv" download>2入力・完全格子</a></li>
+    <li><a href="dcdc_efficiency_1d.csv" download>1入力・線形補間</a></li>
+    <li><a href="dcdc_efficiency_3d_temperature.csv" download>3入力・温度特性</a></li>
+    <li><a href="dcdc_efficiency_sparse.csv" download>欠損格子・周辺補間</a></li>
+    <li><a href="dcdc_efficiency_invalid_rows.csv" download>不正行入り</a></li>
+  </ul>
+</body>
+</html>
