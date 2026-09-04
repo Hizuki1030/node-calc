@@ -3,8 +3,36 @@ import { useActions, useIncomingPorts } from '../store.tsx'
 import type { CalcNode, MonitorData } from '../types.ts'
 import { clamp } from '../format.ts'
 import { ImeInput } from '../components/ImeField.tsx'
+import { quantityOf } from '../units/catalog.ts'
 
 const DEFAULT_MONITOR_INPUTS = [{ id: 'in', name: '入力1', unit: '' }]
+
+/** 接続元と同じ量（次元）の表記だけを選べる帯。違う量は選択肢にすら出さない。 */
+function DisplayUnitChips({ sourceUnit, value, onChange }: {
+  sourceUnit: string
+  value: string
+  onChange(unit: string | undefined): void
+}) {
+  const quantity = quantityOf(sourceUnit)
+  if (!quantity || quantity.notations.length <= 1) return <span className="nc-unit">{sourceUnit}</span>
+  return (
+    <div className="nc-unit-chips" role="listbox" aria-label="表示単位">
+      {quantity.notations.map((notation) => (
+        <button
+          type="button"
+          key={notation.symbol}
+          className={`nc-unit-chip${value === notation.symbol ? ' is-selected' : ''}${notation.symbol === quantity.base ? ' is-base' : ''}`}
+          role="option"
+          aria-selected={value === notation.symbol}
+          title={`${notation.label}（${quantity.base} の ${notation.factor} 倍）`}
+          onClick={() => onChange(notation.symbol === sourceUnit ? undefined : notation.symbol)}
+        >
+          {notation.symbol}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 /** モニターの表示設定と、円グラフの入力一覧。 */
 export const MonitorSettings = memo(function MonitorSettings({ node }: { node: CalcNode & { data: MonitorData } }) {
@@ -37,9 +65,16 @@ export const MonitorSettings = memo(function MonitorSettings({ node }: { node: C
         <input className="nc-num" type="number" min={0} max={8} value={d.digits} onChange={(e) => patchMonitor(node.id, { digits: clamp(Number(e.target.value), 0, 8) })} />
       </div>
       {mode === 'value' ? <div className="nc-field-row">
-        <label>単位</label>
-        <span className="nc-unit">{sources[0]?.unit || '—（接続元から自動取得）'}</span>
-      </div> : <>
+        <label>表示単位</label>
+        {sources[0]?.connected && sources[0].unit ? (
+          <DisplayUnitChips
+            sourceUnit={sources[0].unit}
+            value={d.displayUnit || sources[0].unit}
+            onChange={(next) => patchMonitor(node.id, { displayUnit: next })}
+          />
+        ) : <span className="nc-unit">—（接続元から自動取得）</span>}
+      </div> : null}
+      {mode === 'pie' ? <>
         <p className="nc-note">円グラフは、すべての入力が同じ単位の場合だけ表示します。</p>
         <div className="nc-monitor-input-settings">
           {inputs.map((input, index) => <div key={input.id}>
@@ -49,7 +84,7 @@ export const MonitorSettings = memo(function MonitorSettings({ node }: { node: C
           </div>)}
           <button className="nc-btn nc-btn-ghost" onClick={() => addMonitorInput(node.id)}>＋ 入力を追加</button>
         </div>
-      </>}
+      </> : null}
     </>
   )
 })

@@ -7,8 +7,9 @@ import {
   useSelected,
   useStoreSelector,
 } from '../store.tsx'
-import { isMonitor, isResult, isVariable, type CalcNode, type ResultData } from '../types.ts'
+import { isBlock, isMonitor, isResult, isVariable, type BlockData, type CalcNode, type ResultData } from '../types.ts'
 import { FUNCTION_HELP } from '../engine/functions.ts'
+import { checkGraphUnits } from '../engine/units.ts'
 import { clamp } from '../format.ts'
 import { UnitPicker } from '../components/UnitPicker.tsx'
 import { ValueSlider, type VariableNodeRef } from '../components/ValueSlider.tsx'
@@ -104,6 +105,61 @@ const FormulaHelp = memo(function FormulaHelp() {
   )
 })
 
+/** 選んだ計算ブロックのパラメーター。編集ポップアップと同じ項目を確認専用で並べる。 */
+const BlockSettings = memo(function BlockSettings({ node }: { node: CalcNode & { data: BlockData } }) {
+  const d = node.data
+  // 単位チェックはグラフ全体で走る。ポップアップと同じ結果を出しつつ、
+  // このノードの指摘が変わったときだけ描き直すよう、メッセージを畳んで購読する。
+  const packedIssues = useStoreSelector(
+    useCallback((store) => checkGraphUnits(store.getGraph()).issues
+      .filter((issue) => issue.nodeId === node.id)
+      .map((issue) => issue.message)
+      .join('\n'), [node.id]),
+  )
+  const unitIssues = packedIssues ? packedIssues.split('\n') : []
+  // 入力なし・計算1行のシンプルなブロックは、見出しを並べるより式を直接見せる。
+  const simple = d.inputs.length === 0 && d.calcs.length === 1
+  return (
+    <>
+      <h4 className="nc-sub">{d.title} のパラメーター</h4>
+      {d.note && <p className="nc-hint">{d.note}</p>}
+      {d.inputs.length > 0 && <section className="nc-block-params">
+        <h5 className="nc-params-title">入力</h5>
+        <div className="nc-param-list">
+          {d.inputs.map((input) => (
+            <div className="nc-param-row" key={input.id}>
+              <span className="nc-param-main">
+                <code className="nc-mono">{input.name}</code>
+                {input.unit && <span className="nc-param-unit">[{input.unit}]</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>}
+      {d.calcs.length > 0 && <section className="nc-block-params">
+        {!simple && <h5 className="nc-params-title">計算</h5>}
+        <div className="nc-param-list">
+          {d.calcs.map((calc) => (
+            <div className="nc-param-row" key={calc.id} title={`${calc.name} = ${calc.expr}`}>
+              <span className="nc-param-main">
+                <code className="nc-mono">{`{${calc.name}}`}</code>
+                <span className="nc-param-eq">=</span>
+                <code className="nc-param-expr nc-mono">{calc.expr}</code>
+                {calc.unit && <span className="nc-param-unit">[{calc.unit}]</span>}
+              </span>
+              <span className={`nc-param-note${calc.exposed ? '' : ' is-off'}`}>{calc.exposed ? '● 外部へ出力' : '○ 内部計算'}</span>
+            </div>
+          ))}
+        </div>
+      </section>}
+      {unitIssues.length > 0 && <section className="nc-unit-errors">
+        <strong>単位チェック</strong>
+        {unitIssues.map((message, index) => <p key={index}>{message}</p>)}
+      </section>}
+    </>
+  )
+})
+
 /** 選んだノードの詳細と、全スイープ変数のスライダーをまとめた操作卓。 */
 export function InspectorPanel() {
   const selected = useSelected()
@@ -128,6 +184,7 @@ export function InspectorPanel() {
       {node && isVariable(node) && <VariableSettings node={node} />}
       {node && isResult(node) && <ResultSettings node={node} />}
       {node && isMonitor(node) && <MonitorSettings node={node} />}
+      {node && isBlock(node) && <BlockSettings node={node} />}
 
       <FormulaHelp />
     </div>

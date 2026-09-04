@@ -192,14 +192,23 @@ export const UNIT_QUANTITIES: UnitQuantity[] = [
     ],
   },
   {
-    key: 'money', name: '金額・単価', base: '円', dims: null,
+    // 円/個・円/m のような単価は、ここに書き並べず UnitPicker の「組み合わせ」で作る。
+    // 通貨ごとに dims: null（独立した次元）にしてあるので、円とドルは別の単位として
+    // 扱われ、自動では換算されない。
+    key: 'money', name: '金額', base: '円', dims: null,
     notations: [
-      { symbol: '円', label: '円', factor: 1 },
-      { symbol: '円/個', label: '円毎個', factor: 1 },
-      { symbol: '円/枚', label: '円毎枚', factor: 1 },
-      { symbol: '円/m', label: '円毎メートル', factor: 1 },
-      { symbol: '円/m^2', label: '円毎平方メートル', factor: 1 },
-      { symbol: '円/h', label: '円毎時間', factor: 1 },
+      { symbol: '円', label: '円（JPY）', factor: 1 },
+      { symbol: '$', label: 'ドル（USD）', factor: 1 },
+      { symbol: '€', label: 'ユーロ（EUR）', factor: 1 },
+      { symbol: '£', label: 'ポンド（GBP）', factor: 1 },
+      { symbol: '元', label: '人民元（CNY）', factor: 1 },
+      { symbol: '₩', label: 'ウォン（KRW）', factor: 1 },
+      { symbol: 'A$', label: '豪ドル（AUD）', factor: 1 },
+      { symbol: 'C$', label: '加ドル（CAD）', factor: 1 },
+      { symbol: 'CHF', label: 'スイスフラン（CHF）', factor: 1 },
+      { symbol: 'HK$', label: '香港ドル（HKD）', factor: 1 },
+      { symbol: 'S$', label: 'シンガポールドル（SGD）', factor: 1 },
+      { symbol: '₹', label: 'ルピー（INR）', factor: 1 },
     ],
   },
   {

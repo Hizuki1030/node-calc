@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { PORT_IDLE, useActions, useIncomingPorts, useNode, useNodeResult } from '../store.tsx'
 import { inputPorts, isMonitor } from '../types.ts'
 import { fmtNum } from '../format.ts'
+import { convertValue, sameQuantity } from '../engine/units.ts'
 import { useHandleSync } from './useHandleSync.ts'
 import { NodeIcon } from '../components/NodeIcon.tsx'
 
@@ -37,6 +38,10 @@ export const MonitorNode = memo(function MonitorNode({ id, selected }: NodeProps
 
   if (mode === 'value') {
     const entry = entries[0]
+    // 表示単位が接続元と同じ量（次元）のときだけ、その表記へ換算して見せる（1h → 3600s など）。
+    const useDisplayUnit = Boolean(data.displayUnit && entry?.unit && sameQuantity(entry.unit, data.displayUnit))
+    const shownUnit = useDisplayUnit ? data.displayUnit! : entry?.unit
+    const shownValue = useDisplayUnit && entry?.value !== undefined ? convertValue(entry.value, entry.unit, data.displayUnit!) : entry?.value
     return <div
       ref={handleSync}
       className={`nc-node nc-monitor${selected ? ' is-selected' : ''}`}
@@ -49,8 +54,8 @@ export const MonitorNode = memo(function MonitorNode({ id, selected }: NodeProps
         <button className="nc-x nodrag" onClick={() => removeNode(id)} title="削除">×</button>
       </div>
       <div className="nc-monitor-value nc-mono">
-        {result?.error ? '—' : fmtNum(entry?.value, data.digits)}
-        {entry?.unit && <em>{entry.unit}</em>}
+        {result?.error ? '—' : fmtNum(shownValue, data.digits)}
+        {shownUnit && <em>{shownUnit}</em>}
       </div>
     </div>
   }

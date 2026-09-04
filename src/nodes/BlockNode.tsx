@@ -61,7 +61,12 @@ export const BlockNode = memo(function BlockNode({ id, selected }: NodeProps) {
   const d = node.data
   const longestFormula = d.calcs.reduce((longest, calc) => Math.max(longest, calc.name.length + calc.expr.length), 0)
   const longestInput = d.inputs.reduce((longest, input) => Math.max(longest, input.name.length + input.unit.length), 0)
-  const blockWidth = Math.min(820, Math.max(440, 250 + longestFormula * 4.5, 300 + longestInput * 7))
+  // タイトル・入力行・数式行、それぞれが必要とする最小幅の一番大きいものに合わせる。
+  // 短い式のブロック（a+b くらい）まで一律に大きくしないよう、下限は低めに取る。
+  const titleWidth = 56 + d.title.length * 9
+  const formulaWidth = 210 + longestFormula * 4.5
+  const inputWidth = d.inputs.length > 0 ? 170 + longestInput * 7 : 0
+  const blockWidth = Math.min(820, Math.max(200, titleWidth, formulaWidth, inputWidth))
   const formulaSize = longestFormula > 150 ? 9.5 : longestFormula > 105 ? 10.5 : longestFormula > 70 ? 11.5 : 13
   const blockStyle = {
     '--nc-block-width': `${Math.round(blockWidth)}px`,

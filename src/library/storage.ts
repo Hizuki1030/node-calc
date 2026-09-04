@@ -161,6 +161,7 @@ export function normalizeGraph(value: unknown): Graph | null {
           unit: '',
         }
       }), `${id}-monitor-`),
+      displayUnit: text(data.displayUnit) || undefined,
     }
     nodes.push({ ...base, kind: 'monitor', data: monitor })
   }

@@ -30,10 +30,16 @@ export function UnitPicker({ value, onChange, ariaLabel = '単位' }: {
   const searchRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [openUp, setOpenUp] = useState(false)
+  // モーダルの中（overflow:auto）に置かれると、position:absolute のポップオーバーが
+  // モーダルの箱に切り取られてクリックも通らなくなる。viewport 基準の position:fixed
+  // で逃がすため、開くたびにトリガーの画面上の位置を測っておく。
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
   const [query, setQuery] = useState('')
-  const [custom, setCustom] = useState('')
-  const [customError, setCustomError] = useState('')
   const [recent, setRecent] = useState<string[]>(loadRecent)
+  // 組み合わせ（例: 円 ÷ 個 → 円/個）。カタログにない「A毎B」はここで作る。
+  const [composeA, setComposeA] = useState('')
+  const [composeOp, setComposeOp] = useState<'/' | '*'>('/')
+  const [composeB, setComposeB] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -69,19 +75,31 @@ export function UnitPicker({ value, onChange, ariaLabel = '単位' }: {
     setQuery('')
   }
 
-  const chooseCustom = () => {
-    try {
-      parseUnit(custom)
-      choose(custom.trim())
-      setCustom('')
-      setCustomError('')
-    } catch (error) {
-      setCustomError(error instanceof Error ? error.message : String(error))
-    }
+  const composed = composeA && composeB ? `${composeA}${composeOp}${composeB}` : ''
+  const composeValid = useMemo(() => {
+    if (!composed) return false
+    try { parseUnit(composed); return true } catch { return false }
+  }, [composed])
+
+  const applyCompose = () => {
+    if (!composeValid) return
+    choose(composed)
+    setComposeA('')
+    setComposeB('')
   }
 
   const toggle = () => {
-    if (!open) setOpenUp((root.current?.getBoundingClientRect().bottom ?? 0) > window.innerHeight - 430)
+    if (!open) {
+      const rect = root.current?.getBoundingClientRect()
+      if (rect) {
+        const up = rect.bottom > window.innerHeight - 430
+        setOpenUp(up)
+        setPos({
+          right: window.innerWidth - rect.right,
+          ...(up ? { bottom: window.innerHeight - rect.top + 5 } : { top: rect.bottom + 5 }),
+        })
+      }
+    }
     setOpen((shown) => !shown)
   }
 
@@ -105,7 +123,10 @@ export function UnitPicker({ value, onChange, ariaLabel = '単位' }: {
       {selectedLabel && <small>{selectedLabel}</small>}
       <i>⌄</i>
     </button>
-    {open && <div className={`nc-unit-popover${openUp ? ' is-up' : ''}`}>
+    {open && <div
+      className={`nc-unit-popover${openUp ? ' is-up' : ''}`}
+      style={pos ? { position: 'fixed', top: pos.top, bottom: pos.bottom, right: pos.right } : undefined}
+    >
       <div className="nc-unit-search-row">
         <input ref={searchRef} className="nc-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="記号・単位名で検索" aria-label="単位を検索" />
         <button className="nc-x" type="button" onClick={() => setOpen(false)}>×</button>
@@ -126,13 +147,35 @@ export function UnitPicker({ value, onChange, ariaLabel = '単位' }: {
           <h5>{quantity.name}{quantity.dims && <em>SI: {quantity.base}</em>}</h5>
           <div className="nc-unit-chips" role="listbox">{chips(quantity)}</div>
         </section>)}
-        {groups.length === 0 && <p className="nc-hint">一致する単位がありません。下のカスタム単位を使えます。</p>}
+        {groups.length === 0 && <p className="nc-hint">一致する単位がありません。下の「組み合わせ」で作れます。</p>}
       </div>
 
-      <div className="nc-unit-custom">
-        <label>カスタム単位</label>
-        <div><input className="nc-text" value={custom} onChange={(event) => { setCustom(event.target.value); setCustomError('') }} placeholder="例: kg/m^3" onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) chooseCustom() }} /><button className="nc-btn" type="button" disabled={!custom.trim()} onClick={chooseCustom}>使用</button></div>
-        {customError && <small>{customError}</small>}
+      <div className="nc-unit-compose">
+        <label>組み合わせ（例: 円 ÷ 個 → 円/個）</label>
+        <div className="nc-unit-compose-row">
+          <select className="nc-select" value={composeA} onChange={(event) => setComposeA(event.target.value)} aria-label="組み合わせの左側の単位">
+            <option value="">単位</option>
+            {UNIT_QUANTITIES.map((quantity) => (
+              <optgroup key={quantity.key} label={quantity.name}>
+                {quantity.notations.map((notation) => <option key={notation.symbol} value={notation.symbol}>{notation.symbol}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <select className="nc-select nc-unit-compose-op" value={composeOp} onChange={(event) => setComposeOp(event.target.value as '/' | '*')} aria-label="組み合わせ方">
+            <option value="/">毎（÷）</option>
+            <option value="*">×</option>
+          </select>
+          <select className="nc-select" value={composeB} onChange={(event) => setComposeB(event.target.value)} aria-label="組み合わせの右側の単位">
+            <option value="">単位</option>
+            {UNIT_QUANTITIES.map((quantity) => (
+              <optgroup key={quantity.key} label={quantity.name}>
+                {quantity.notations.map((notation) => <option key={notation.symbol} value={notation.symbol}>{notation.symbol}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <button className="nc-btn" type="button" disabled={!composeValid} onClick={applyCompose}>使う</button>
+        </div>
+        {composed && <p className="nc-unit-compose-preview">{composeValid ? composed : `${composed} は組み合わせられません`}</p>}
       </div>
     </div>}
   </div>
