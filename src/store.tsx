@@ -59,6 +59,8 @@ export interface Actions {
   patchTable(id: string, patch: Partial<TableData>): void
   addTableInput(id: string): void
   removeTableInput(id: string, portId: string): void
+  addTableOutput(id: string): void
+  removeTableOutput(id: string, portId: string): void
   addMonitorInput(id: string): void
   removeMonitorInput(id: string, portId: string): void
   renameMonitorInput(id: string, portId: string, name: string): void
@@ -375,18 +377,20 @@ function createGraphStore(initialGraph: Graph, initialBlocks: BlockPreset[]): Gr
         if (!current) return g
         const next = { ...current, ...patch }
         const inputIds = new Set(next.inputs.map((input) => input.id))
+        const outputIds = new Set(next.outputs.map((output) => output.id))
         return {
           ...withNode(g, id, (node) => ({ ...node, data: next })),
           edges: g.edges.filter((edge) =>
             (edge.target !== id || inputIds.has(edge.targetPort))
-            && (edge.source !== id || edge.sourcePort === next.output.id),
+            && (edge.source !== id || outputIds.has(edge.sourcePort)),
           ),
         }
       }),
     addTableInput: (id) =>
       update((g) => withNode(g, id, (node) => {
         const data = node.data as TableData
-        const column = data.headers.findIndex((_, index) => !data.inputs.some((input) => input.column === index) && index !== data.output.column)
+        const usedColumns = new Set([...data.inputs, ...data.outputs].map((port) => port.column))
+        const column = data.headers.findIndex((_, index) => !usedColumns.has(index))
         const nextColumn = column >= 0 ? column : 0
         return { ...node, data: { ...data, inputs: [...data.inputs, { id: uid('ti'), name: data.headers[nextColumn] || `入力${data.inputs.length + 1}`, unit: '', column: nextColumn }] } }
       })),
@@ -398,6 +402,24 @@ function createGraphStore(initialGraph: Graph, initialBlocks: BlockPreset[]): Gr
         return {
           ...withNode(g, id, (item) => ({ ...item, data: { ...(item.data as TableData), inputs: data.inputs.filter((input) => input.id !== portId) } })),
           edges: g.edges.filter((edge) => !(edge.target === id && edge.targetPort === portId)),
+        }
+      }),
+    addTableOutput: (id) =>
+      update((g) => withNode(g, id, (node) => {
+        const data = node.data as TableData
+        const usedColumns = new Set([...data.inputs, ...data.outputs].map((port) => port.column))
+        const column = data.headers.findIndex((_, index) => !usedColumns.has(index))
+        const nextColumn = column >= 0 ? column : 0
+        return { ...node, data: { ...data, outputs: [...data.outputs, { id: uid('to'), name: data.headers[nextColumn] || `出力${data.outputs.length + 1}`, unit: '', column: nextColumn }] } }
+      })),
+    removeTableOutput: (id, portId) =>
+      update((g) => {
+        const node = g.nodes.find((item) => item.id === id)
+        const data = node?.data as TableData | undefined
+        if (!data || data.outputs.length <= 1) return g
+        return {
+          ...withNode(g, id, (item) => ({ ...item, data: { ...(item.data as TableData), outputs: data.outputs.filter((output) => output.id !== portId) } })),
+          edges: g.edges.filter((edge) => !(edge.source === id && edge.sourcePort === portId)),
         }
       }),
     addMonitorInput: (id) =>

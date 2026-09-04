@@ -6,7 +6,7 @@ import { fmtStepNum } from '../format.ts'
 import { useHandleSync } from './useHandleSync.ts'
 import { NodeIcon } from '../components/NodeIcon.tsx'
 
-const MODE_LABEL = { constant: '定数', select: 'リスト', slider: 'スライダー' }
+const MODE_LABEL = { constant: '定数', select: 'リスト', slider: 'スライダー', text: 'テキスト' }
 
 /** キャンバス上の変数は現在値だけを表示し、設定はクリック後のポップアップで行う。 */
 export const VariableNode = memo(function VariableNode({ id, selected }: NodeProps) {
@@ -25,7 +25,9 @@ export const VariableNode = memo(function VariableNode({ id, selected }: NodePro
       style={{ '--nc-port': color } as CSSProperties}
     >
       <div className="nc-compact-title"><NodeIcon kind="variable" />{d.title || '変数'}</div>
-      <div className="nc-var-compact-value nc-mono">{fmtStepNum(d.value, d.step)}<em>{d.unit}</em></div>
+      {mode === 'text'
+        ? <div className="nc-var-compact-value nc-mono" title={d.text || undefined}>{d.text || '（未入力）'}</div>
+        : <div className="nc-var-compact-value nc-mono">{fmtStepNum(d.value, d.step)}<em>{d.unit}</em></div>}
       <span className="nc-var-mode">{MODE_LABEL[mode]}</span>
       {label && <span className="nc-net-label nc-net-label-out">{label}</span>}
       <Handle type="source" position={Position.Right} id="out" className="nc-handle nc-handle-var" title="この値からつなぐ" />

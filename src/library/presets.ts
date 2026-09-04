@@ -260,7 +260,7 @@ export function newTable(x: number, y: number, id: string, over: Partial<TableDa
         { id: uid('ti'), name: '入力1', unit: '', column: 0 },
         { id: uid('ti'), name: '入力2', unit: '', column: 1 },
       ],
-      output: { id: 'out', name: '出力', unit: '', column: 2 },
+      outputs: [{ id: uid('to'), name: '出力', unit: '', column: 2 }],
       headers: ['入力1', '入力2', '出力'],
       rows: [],
       digits: 4,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ImeInput } from '../components/ImeField.tsx'
 import { EXAMPLES } from '../library/presets.ts'
 import { deleteServerFile, listServerFiles, readServerFile, renameServerFile, type ServerFileInfo } from '../library/serverFiles.ts'
+import { FileBrowserModal } from './FileBrowserModal.tsx'
 import { useProject } from './ProjectControls.tsx'
 
 function formatSize(bytes: number): string {
@@ -22,6 +23,7 @@ export function FilesPanel() {
   const [name, setName] = useState(fileName === '新規プロジェクト' ? '' : fileName)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [browsing, setBrowsing] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
@@ -101,6 +103,11 @@ export function FilesPanel() {
         />
         <button className="nc-btn nc-btn-primary" onClick={() => void save()} disabled={busy}>保存</button>
       </div>
+
+      <div className="nc-file-toolbar">
+        <button className="nc-btn nc-btn-ghost" onClick={() => setBrowsing(true)}>📂 PCから開く…</button>
+      </div>
+      {browsing && <FileBrowserModal onClose={() => setBrowsing(false)} />}
 
       <h4 className="nc-sub">ファイル</h4>
       {files.length === 0

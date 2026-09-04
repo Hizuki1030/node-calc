@@ -174,15 +174,17 @@ export function buildSheet(graph: Graph, results: EvalResult): SheetPlan {
         })
         if (!srcCell) warnings.push(`${n.data.title}: 入力「${input.name}」が未接続です`)
       }
-      const outputRow = push({
-        style: 'output',
-        name: n.data.output.name,
-        value: res?.outputs[n.data.output.id],
-        source: `${n.data.rows.length}行のCSVテーブル / ${n.data.mode === 'nearest' ? '最近傍' : '連続補間'}`,
-        note: n.data.output.unit,
-      })
-      cellOf.set(`${n.id}/${n.data.output.id}`, ref(outputRow))
-      labelOf.set(`${n.id}/${n.data.output.id}`, n.data.output.name)
+      for (const output of n.data.outputs) {
+        const outputRow = push({
+          style: 'output',
+          name: output.name,
+          value: res?.outputs[output.id],
+          source: `${n.data.rows.length}行のCSVテーブル / ${n.data.mode === 'nearest' ? '最近傍' : '連続補間'}`,
+          note: output.unit,
+        })
+        cellOf.set(`${n.id}/${output.id}`, ref(outputRow))
+        labelOf.set(`${n.id}/${output.id}`, output.name)
+      }
       warnings.push(`${n.data.title}: CSVテーブル変換はExcel上では書き出し時の値に固定されます`)
       push({ style: 'blank' })
       continue

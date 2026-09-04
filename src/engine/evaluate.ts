@@ -30,6 +30,9 @@ export interface NodeResult {
   error?: string
   /** 入力ポート id → 値 */
   inputs: Record<string, number>
+  /** テキスト出力・テキスト入力ポート id → 値。テキスト変数と、テーブルのテキスト入力専用。
+   *  数式や表示ノードには乗らない、完全一致検索専用の経路。 */
+  texts: Record<string, string>
   /** 計算行 id → 結果 */
   rows: Record<string, RowResult>
   /** 出力ポート id → 値 */
@@ -116,7 +119,7 @@ export function evalAst(ast: Ast, env: Map<string, number>, unitEnv?: Map<string
 /* ---------------- グラフの評価 ---------------- */
 
 function emptyResult(): NodeResult {
-  return { inputs: {}, rows: {}, outputs: {} }
+  return { inputs: {}, texts: {}, rows: {}, outputs: {} }
 }
 
 function messageOf(e: unknown): string {
@@ -143,7 +146,7 @@ export function createEvalCache(): EvalCache {
 function signatureOf(node: CalcNode, r: NodeResult, upstreamBroken: boolean, missing: string[]): string {
   let signature = upstreamBroken ? '!' : ''
   signature += missing.join('')
-  for (const port of inputPorts(node)) signature += `${port.id}=${r.inputs[port.id]}`
+  for (const port of inputPorts(node)) signature += `${port.id}=${r.inputs[port.id] ?? r.texts[port.id] ?? ''}`
   return signature
 }
 
@@ -206,18 +209,40 @@ export function evaluateGraph(graph: Graph, overrides?: Map<string, number>, cac
     return src.ratio === 1 ? v : v * src.ratio
   }
 
+  /** テキスト値（テーブルのテキスト入力・テキスト変数専用）を接続元からたどる。単位換算はしない。 */
+  function inputText(node: CalcNode, portId: string): string | { missing: true } | { cyclic: true } {
+    const src = incoming.get(`${node.id}/${portId}`)
+    if (!src) return { missing: true }
+    const up = visit(src.source)
+    if (up.error) return { cyclic: true }
+    const v = up.texts[src.sourcePort]
+    if (v === undefined) return { missing: true }
+    return v
+  }
+
   function compute(node: CalcNode): NodeResult {
     const r = emptyResult()
 
     if (isVariable(node)) {
+      if ((node.data.mode ?? 'slider') === 'text') {
+        r.texts.out = node.data.text ?? ''
+        return r
+      }
       const v = overrides?.get(node.id) ?? node.data.value
       r.outputs.out = v
       return r
     }
 
+    // テーブルのテキスト入力（完全一致検索用）は数値パイプラインに乗らないため、
+    // 通常の入力解決から除いて別に扱う。
+    const textPortIds = isTable(node)
+      ? new Set(node.data.inputs.filter((input) => input.kind === 'text').map((input) => input.id))
+      : null
+
     const missing: string[] = []
     let upstreamBroken = false
     for (const p of inputPorts(node)) {
+      if (textPortIds?.has(p.id)) continue
       const v = inputValue(node, p.id)
       if (typeof v === 'number') {
         r.inputs[p.id] = v
@@ -225,6 +250,19 @@ export function evaluateGraph(graph: Graph, overrides?: Map<string, number>, cac
         upstreamBroken = true
       } else {
         missing.push(p.name)
+      }
+    }
+    if (textPortIds?.size) {
+      for (const p of inputPorts(node)) {
+        if (!textPortIds.has(p.id)) continue
+        const v = inputText(node, p.id)
+        if (typeof v === 'string') {
+          r.texts[p.id] = v
+        } else if ('cyclic' in v) {
+          upstreamBroken = true
+        } else {
+          missing.push(p.name)
+        }
       }
     }
 
@@ -263,9 +301,13 @@ export function evaluateGraph(graph: Graph, overrides?: Map<string, number>, cac
       else if (!node.data.rows.length) r.error = 'CSVデータを読み込んでください'
       else {
         try {
-          const lookup = lookupTable(node.data, node.data.inputs.map((input) => r.inputs[input.id]))
-          r.outputs[node.data.output.id] = lookup.value
-          r.rows[node.data.output.id] = { value: lookup.value }
+          const values = node.data.inputs.map((input) =>
+            input.kind === 'text' ? r.texts[input.id] : r.inputs[input.id])
+          const lookup = lookupTable(node.data, values)
+          node.data.outputs.forEach((output, index) => {
+            r.outputs[output.id] = lookup.values[index]
+            r.rows[output.id] = { value: lookup.values[index] }
+          })
         } catch (error) {
           r.error = messageOf(error)
         }

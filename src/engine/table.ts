@@ -1,13 +1,17 @@
-import type { TableData } from '../types.ts'
+import type { TableCell, TableData, TableInputDef } from '../types.ts'
 
 export interface ParsedNumericTable {
   headers: string[]
-  rows: number[][]
+  rows: TableCell[][]
+  /** 列ごとに、テキスト列（完全一致検索用）と判定されたか。数値変換できる値が1つもない列がテキスト列になる。 */
+  textColumns: boolean[]
   skippedRows: number
 }
 
 export interface TableLookupResult {
-  value: number
+  /** data.outputs と同じ順番の値。 */
+  values: number[]
+  /** 補間方法は入力座標の位置関係だけで決まるので、全出力で共通。 */
   method: 'exact' | 'nearest' | 'linear' | 'continuous-neighbors'
 }
 
@@ -62,21 +66,40 @@ function numericCell(source: string): number {
   return Number(clean)
 }
 
-/** カンマ・タブ・セミコロン区切りの、ヘッダー付き数値表を読む。 */
+/**
+ * カンマ・タブ・セミコロン区切りの、ヘッダー付き表を読む。
+ *
+ * 列は基本的に数値として扱うが、数値に変換できる値が1つもない列（地名や型番などの
+ * カテゴリ列）は、完全一致検索用のテキスト列として文字列のまま保持する。
+ * 数値列の中にたまに混じる不正な値（1行だけ壊れている等）は、その行だけを除外する
+ * 従来どおりの挙動を保つ。
+ */
 export function parseNumericTable(source: string): ParsedNumericTable {
   const records = parseRecords(source.replace(/^\uFEFF/, ''), delimiterOf(source))
   if (records.length < 2) throw new Error('ヘッダーと1行以上のデータが必要です')
   const headers = records[0].map((header, index) => header.trim() || `列${index + 1}`)
   if (headers.length < 2) throw new Error('入力列と出力列の2列以上が必要です')
-  const rows: number[][] = []
+
+  const dataRecords = records.slice(1)
+  const textColumns = headers.map((_, col) =>
+    !dataRecords.some((record) => {
+      const cell = (record[col] ?? '').trim()
+      return cell !== '' && Number.isFinite(numericCell(cell))
+    }))
+
+  const rows: TableCell[][] = []
   let skippedRows = 0
-  for (const record of records.slice(1)) {
-    const row = headers.map((_, index) => numericCell(record[index] ?? ''))
-    if (row.every(Number.isFinite)) rows.push(row)
+  for (const record of dataRecords) {
+    const row = headers.map((_, col): TableCell => {
+      const raw = record[col] ?? ''
+      return textColumns[col] ? raw.trim() : numericCell(raw)
+    })
+    const valid = row.every((cell, col) => textColumns[col] || Number.isFinite(cell as number))
+    if (valid) rows.push(row)
     else skippedRows++
   }
-  if (!rows.length) throw new Error('数値として読めるデータ行がありません')
-  return { headers, rows, skippedRows }
+  if (!rows.length) throw new Error('データとして読める行がありません')
+  return { headers, rows, textColumns, skippedRows }
 }
 
 /** `入力電圧 [V]` や `Vin(V)` から表示名と単位を取り出す。 */
@@ -87,10 +110,12 @@ export function splitHeaderUnit(header: string): { name: string; unit: string } 
 
 const nearlyEqual = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-12 * Math.max(1, Math.abs(a), Math.abs(b))
 const keyOf = (values: number[]): string => values.map((value) => String(value)).join('\u001f')
+const isFiniteNumber = (value: TableCell): value is number => typeof value === 'number' && Number.isFinite(value)
 
 interface TableRow {
   coordinates: number[]
-  output: number
+  /** data.outputs と同じ順番の値。 */
+  outputs: number[]
 }
 interface Range {
   min: number
@@ -108,8 +133,8 @@ interface PreparedTable {
   ranges: Range[]
   /** 次元ごとの、重複を除いた昇順の軸値 */
   axes: number[][]
-  /** 座標キー → 出力値。完全一致の引き当てと多線形補間の頂点取得に使う */
-  byCoordinate: Map<string, number>
+  /** 座標キー → 出力値の配列。完全一致の引き当てと多線形補間の頂点取得に使う */
+  byCoordinate: Map<string, number[]>
   /** 入力値 → 結果。同じ値へ戻す操作が多いので短期キャッシュを持つ */
   memo: Map<string, TableLookupResult>
 }
@@ -125,14 +150,15 @@ function prepare(data: TableData): PreparedTable {
   if (hit) return hit
 
   const columns = data.inputs.map((input) => input.column)
+  const outputColumns = data.outputs.map((output) => output.column)
   const dimensions = columns.length
   const rows: TableRow[] = []
   for (const row of data.rows) {
-    const output = row[data.output.column]
-    if (!Number.isFinite(output)) continue
+    const outputs = outputColumns.map((column) => row[column])
+    if (!outputs.every(isFiniteNumber)) continue
     const coordinates = columns.map((column) => row[column])
-    if (!coordinates.every(Number.isFinite)) continue
-    rows.push({ coordinates, output })
+    if (!coordinates.every(isFiniteNumber)) continue
+    rows.push({ coordinates, outputs })
   }
 
   // 行数が多いと Math.min(...values) は引数を積みきれずに落ちるため、1 パスで畳む。
@@ -159,7 +185,7 @@ function prepare(data: TableData): PreparedTable {
     rows,
     ranges,
     axes: axisSets.map((axis) => [...axis].sort((a, b) => a - b)),
-    byCoordinate: new Map(rows.map((row) => [keyOf(row.coordinates), row.output])),
+    byCoordinate: new Map(rows.map((row) => [keyOf(row.coordinates), row.outputs])),
     memo: new Map(),
   }
   prepared.set(data, value)
@@ -212,13 +238,8 @@ function nearestRows(rows: TableRow[], target: number[], ranges: Range[], count:
   return best.map((item) => item.row)
 }
 
-/** 多入力テーブルを最近傍または多線形補間で評価する。範囲外は端へ固定する。 */
-export function lookupTable(data: TableData, values: number[]): TableLookupResult {
-  if (!data.inputs.length) throw new Error('テーブル入力がありません')
-  if (values.length !== data.inputs.length || values.some((value) => !Number.isFinite(value))) throw new Error('入力値が不正です')
-  const inputColumns = data.inputs.map((input) => input.column)
-  if (new Set(inputColumns).size !== inputColumns.length) throw new Error('同じCSV列を複数の入力へ指定できません')
-  if (inputColumns.includes(data.output.column)) throw new Error('入力列と出力列は別の列にしてください')
+/** 数値入力だけで最近傍・多線形補間の索引を引く。同じ data の間は前処理を使い回す。 */
+function lookupNumeric(data: TableData, values: number[]): TableLookupResult {
   const table = prepare(data)
   const { rows, ranges, axes } = table
   if (!rows.length) throw new Error('使用できるテーブルデータがありません')
@@ -238,14 +259,67 @@ export function lookupTable(data: TableData, values: number[]): TableLookupResul
   return result
 }
 
+/**
+ * 多入力・多出力テーブルを最近傍または多線形補間で評価する。範囲外は端へ固定する。
+ *
+ * テキスト入力（input.kind === 'text'）は数値の格子に混ぜず、まず完全一致で行を
+ * 絞り込んでから、残りの数値入力で通常どおり検索する。全入力がテキストなら、
+ * 一致した最初の行の出力をそのまま返す。
+ */
+export function lookupTable(data: TableData, values: Array<number | string>): TableLookupResult {
+  if (!data.inputs.length) throw new Error('テーブル入力がありません')
+  if (!data.outputs.length) throw new Error('テーブル出力がありません')
+  if (values.length !== data.inputs.length) throw new Error('入力値が不正です')
+  const inputColumns = data.inputs.map((input) => input.column)
+  if (new Set(inputColumns).size !== inputColumns.length) throw new Error('同じCSV列を複数の入力へ指定できません')
+  if (data.outputs.some((output) => inputColumns.includes(output.column))) throw new Error('入力列と出力列は別の列にしてください')
+
+  const textEntries: Array<{ input: TableInputDef; index: number }> = []
+  const numberEntries: Array<{ input: TableInputDef; index: number }> = []
+  data.inputs.forEach((input, index) => (input.kind === 'text' ? textEntries : numberEntries).push({ input, index }))
+
+  for (const { input, index } of numberEntries) {
+    const value = values[index]
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`「${input.name}」の入力値が不正です`)
+  }
+  for (const { input, index } of textEntries) {
+    if (typeof values[index] !== 'string') throw new Error(`「${input.name}」の入力値が不正です`)
+  }
+
+  let rows = data.rows
+  if (textEntries.length) {
+    rows = data.rows.filter((row) =>
+      textEntries.every(({ input, index }) => String(row[input.column]).trim() === (values[index] as string).trim()))
+    if (!rows.length) throw new Error('テキスト入力に一致する行が見つかりません')
+  }
+
+  if (!numberEntries.length) {
+    // 全入力がテキスト：完全一致した最初の行をそのまま出力とする。
+    const row = rows[0]
+    const outValues = data.outputs.map((output) => {
+      const cell = row[output.column]
+      if (!isFiniteNumber(cell)) throw new Error(`出力「${output.name}」の列は数値である必要があります`)
+      return cell
+    })
+    return { values: outValues, method: 'exact' }
+  }
+
+  const numberValues = numberEntries.map(({ index }) => values[index] as number)
+  const numberData: TableData = textEntries.length
+    ? { ...data, inputs: numberEntries.map(({ input }) => input), rows }
+    : data
+  return lookupNumeric(numberData, numberValues)
+}
+
 function lookupClamped(data: TableData, table: PreparedTable, clamped: number[], dimensions: number): TableLookupResult {
   const { rows, ranges, axes, byCoordinate } = table
+  const outputCount = data.outputs.length
 
   const exact = byCoordinate.get(keyOf(clamped))
-  if (exact !== undefined) return { value: exact, method: 'exact' }
+  if (exact !== undefined) return { values: exact, method: 'exact' }
 
   if (data.mode === 'nearest') {
-    return { value: nearestRows(rows, clamped, ranges, 1)[0].output, method: 'nearest' }
+    return { values: nearestRows(rows, clamped, ranges, 1)[0].outputs, method: 'nearest' }
   }
 
   // 直交格子が揃っていれば、1D線形・2D双線形を含む多線形補間を行う。
@@ -267,9 +341,11 @@ function lookupClamped(data: TableData, table: PreparedTable, clamped: number[],
             { coordinates: [...corner.coordinates, upper], weight: corner.weight * t },
           ])
     }
-    const resolved = corners.map((corner) => ({ ...corner, output: byCoordinate.get(keyOf(corner.coordinates)) }))
-    if (resolved.every((corner) => corner.output !== undefined)) {
-      return { value: resolved.reduce((sum, corner) => sum + corner.weight * corner.output!, 0), method: 'linear' }
+    const resolved = corners.map((corner) => ({ ...corner, outputs: byCoordinate.get(keyOf(corner.coordinates)) }))
+    if (resolved.every((corner) => corner.outputs !== undefined)) {
+      const values = Array.from({ length: outputCount }, (_, index) =>
+        resolved.reduce((sum, corner) => sum + corner.weight * corner.outputs![index], 0))
+      return { values, method: 'linear' }
     }
   }
 
@@ -278,8 +354,7 @@ function lookupClamped(data: TableData, table: PreparedTable, clamped: number[],
   const nearest = nearestRows(rows, clamped, ranges, count)
   const weighted = nearest.map((row) => ({ row, weight: 1 / Math.max(distance2(row.coordinates, clamped, ranges), 1e-24) }))
   const weightTotal = weighted.reduce((sum, item) => sum + item.weight, 0)
-  return {
-    value: weighted.reduce((sum, item) => sum + item.row.output * item.weight, 0) / weightTotal,
-    method: 'continuous-neighbors',
-  }
+  const values = Array.from({ length: outputCount }, (_, index) =>
+    weighted.reduce((sum, item) => sum + item.row.outputs[index] * item.weight, 0) / weightTotal)
+  return { values, method: 'continuous-neighbors' }
 }
