@@ -152,19 +152,6 @@ button {
   white-space: nowrap;
 }
 .nc-debug-csv-link:hover { color: var(--text); }
-.nc-project-modal {
-  display: grid;
-  gap: 12px;
-  width: min(430px, calc(100vw - 32px));
-  max-height: min(580px, calc(100vh - 60px));
-  overflow: auto;
-  padding: 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 20px 60px rgb(0 0 0 / .55);
-}
-.nc-project-modal h2 { margin: 0; font-size: 15px; }
 .nc-project-name-input { width: 100%; font-size: 15px; }
 .nc-project-list { display: grid; gap: 6px; }
 .nc-project-row { display: flex; align-items: stretch; gap: 4px; }
@@ -181,6 +168,11 @@ button {
 }
 .nc-project-open:hover { border-color: var(--teal-dim); }
 .nc-project-open small { color: var(--dim); font-size: 10px; }
+.nc-project-empty { margin: 0; color: var(--dim); font-size: 12px; }
+.nc-file-toolbar { display: flex; gap: 6px; }
+.nc-file-toolbar .nc-project-name-input { flex: 1; min-width: 0; }
+.nc-file-toolbar .nc-btn { flex: none; }
+.nc-project-row .nc-btn { flex: none; padding: 4px 8px; font-size: 11px; }
 
 .nc-main {
   display: grid;
@@ -713,7 +705,13 @@ button {
   width: 0;
   min-width: 0;
   padding: 8px 0;
-  overflow: hidden;
+  /* KaTeX の分数は内部で position:relative + 負の top を使って分子を積むため、
+   * その分だけ祖先の auto-height 計算に乗らず、scrollHeight/offsetHeight が
+   * 実際に必要な高さより小さく出る。overflow-x:hidden; overflow-y:visible は
+   * CSS の仕様で overflow-y が auto 扱いになりスクロール箱になって結局隠れて
+   * しまうため使えない。幅は useLayoutEffect が描画前に縮小率を決めるので、
+   * ここは縦横とも隠さずに任せる。 */
+  overflow: visible;
   font-size: 1em;
   line-height: 1.2;
 }
@@ -735,7 +733,7 @@ button {
   flex: 1 1 0;
   width: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .nc-compact-formula.has-fraction .nc-katex { padding-top: 16px; padding-bottom: 16px; }
 .nc-compact-formula .katex { font-size: 1em; }
@@ -981,6 +979,7 @@ button {
   background: color-mix(in srgb, var(--teal) 12%, transparent);
 }
 
+
 .nc-row-tools {
   display: flex;
   gap: 0;
@@ -1088,10 +1087,12 @@ button {
 .nc-unit-chip.is-selected { background: color-mix(in srgb, var(--teal) 18%, var(--surface-2)); border-color: var(--teal); color: #ffffff; }
 /* 今の単位と同じ量の表記は、探さずに切り替えられるよう上に固定する。 */
 .nc-unit-notations { padding: 0 0 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
-.nc-unit-custom { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
-.nc-unit-custom > label { color: var(--dim); font-size: 9px; }
-.nc-unit-custom > div { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
-.nc-unit-custom small { color: #ff9aa6; font-size: 9px; }
+.nc-unit-compose { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.nc-unit-compose > label { color: var(--dim); font-size: 9px; }
+.nc-unit-compose-row { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 4px; align-items: center; }
+.nc-unit-compose-row .nc-select { min-width: 0; }
+.nc-unit-compose-op { flex: none; }
+.nc-unit-compose-preview { margin: 0; color: var(--teal); font-family: var(--mono); font-size: 11px; }
 .nc-text.is-required { border-color: var(--red-dim); background: color-mix(in srgb, var(--red) 7%, var(--bg)); }
 .nc-connected-input {
   display: block;
@@ -1321,8 +1322,7 @@ button {
 .nc-generated-formula { padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; color: var(--teal); overflow-wrap: anywhere; }
 
 .nc-variable-modal,
-.nc-monitor-modal,
-.nc-solve-modal {
+.nc-monitor-modal {
   display: flex;
   flex-direction: column;
   gap: 15px;
@@ -1615,6 +1615,7 @@ button {
   border-bottom: 2px solid transparent;
   padding: 9px 4px;
   color: var(--dim);
+  cursor: pointer;
 }
 .nc-tabs button:hover {
   color: var(--text);
@@ -1664,6 +1665,60 @@ button {
 .nc-range-note {
   font-size: 11px;
   color: var(--muted);
+}
+
+/* ---------------- 右パネル: ブロックのパラメーター ---------------- */
+
+.nc-block-params {
+  display: grid;
+  gap: 6px;
+}
+.nc-params-title {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.nc-param-list {
+  display: grid;
+  gap: 4px;
+}
+.nc-param-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.nc-param-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.nc-param-eq {
+  color: var(--muted);
+}
+.nc-param-expr {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.nc-param-unit {
+  color: var(--dim);
+  font-size: 11px;
+}
+.nc-param-note {
+  color: var(--dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.nc-param-note.is-off {
+  color: color-mix(in srgb, var(--dim) 65%, transparent);
 }
 
 .nc-hint,

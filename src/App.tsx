@@ -17,6 +17,7 @@ import {
 } from '@xyflow/react'
 
 import { GraphProvider, netColorAt, PORT_IDLE, useActions, useEdges, useNodes, useSelectedIds, useStoreApi, useStoreSelector } from './store.tsx'
+import { sameQuantity } from './engine/units.ts'
 import { BlockNode } from './nodes/BlockNode.tsx'
 import { VariableNode } from './nodes/VariableNode.tsx'
 import { ResultNode } from './nodes/ResultNode.tsx'
@@ -24,13 +25,14 @@ import { MonitorNode } from './nodes/MonitorNode.tsx'
 import { TableNode } from './nodes/TableNode.tsx'
 import { Palette } from './panels/Palette.tsx'
 import { InspectorPanel } from './panels/InspectorPanel.tsx'
+import { FilesPanel } from './panels/FilesPanel.tsx'
+import { SolvePanel } from './panels/SolvePanel.tsx'
 import { BlockEditorModal } from './panels/BlockEditorModal.tsx'
 import { VariableEditorModal } from './panels/VariableEditorModal.tsx'
-import { ProjectControls } from './panels/ProjectControls.tsx'
+import { ProjectControls, ProjectProvider } from './panels/ProjectControls.tsx'
 import { TableEditorModal } from './panels/TableEditorModal.tsx'
 import { MonitorEditorModal } from './panels/MonitorEditorModal.tsx'
-import { SolveModal } from './panels/SolveModal.tsx'
-import { inputPorts, outputPortKeys, outputPorts, type CalcNode } from './types.ts'
+import { inputPorts, outputPortKeys, outputPorts, type CalcNode, type PortDef } from './types.ts'
 
 const nodeTypes = { variable: VariableNode, block: BlockNode, table: TableNode, result: ResultNode, monitor: MonitorNode }
 
@@ -62,6 +64,30 @@ function toRfNodes(nodes: CalcNode[], selectedIds: Set<string>, prev: RfNode[]):
   })
   // 中身が 1 つも変わっていないなら配列ごと前回のものを返し、React Flow を動かさない。
   return changed ? next : prev
+}
+
+interface ResolvedConnection {
+  source: string
+  sourcePort: string
+  target: string
+  targetPort: string
+  out: PortDef
+  input: PortDef
+}
+
+/**
+ * Loose モードでは入力側からドラッグした場合に source/target が逆になる。
+ * 実際のポート種別を見て、計算グラフでは必ず「出力 → 入力」に正規化する。
+ * 出力・入力どちらの組み合わせにもならない場合は null（型が合わない配線）。
+ */
+function resolveConnection(c: Connection, a: CalcNode, b: CalcNode): ResolvedConnection | null {
+  const outA = outputPorts(a).find((p) => p.id === c.sourceHandle)
+  const inB = c.targetHandle ? inputPorts(b).find((p) => p.id === c.targetHandle) : undefined
+  if (outA && inB) return { source: c.source!, sourcePort: c.sourceHandle!, target: c.target!, targetPort: c.targetHandle!, out: outA, input: inB }
+  const outB = outputPorts(b).find((p) => p.id === c.targetHandle)
+  const inA = c.sourceHandle ? inputPorts(a).find((p) => p.id === c.sourceHandle) : undefined
+  if (outB && inA) return { source: c.target!, sourcePort: c.targetHandle!, target: c.source!, targetPort: c.sourceHandle!, out: outB, input: inA }
+  return null
 }
 
 function Canvas() {
@@ -160,17 +186,29 @@ function Canvas() {
       const a = api.getNode(c.source)
       const b = api.getNode(c.target)
       if (!a || !b) return
-
-      // Loose モードでは入力側からドラッグした場合に source/target が逆になる。
-      // 実際のポート種別を見て、計算グラフでは必ず「出力 → 入力」に正規化する。
-      const forward = outputPorts(a).some((p) => p.id === c.sourceHandle)
-        && inputPorts(b).some((p) => p.id === c.targetHandle)
-      const reverse = outputPorts(b).some((p) => p.id === c.targetHandle)
-        && inputPorts(a).some((p) => p.id === c.sourceHandle)
-      if (forward) connect(c.source, c.sourceHandle, c.target, c.targetHandle)
-      else if (reverse) connect(c.target, c.targetHandle, c.source, c.sourceHandle)
+      const resolved = resolveConnection(c, a, b)
+      if (!resolved) return
+      connect(resolved.source, resolved.sourcePort, resolved.target, resolved.targetPort)
     },
     [connect, api],
+  )
+
+  // 単位（量そのもの）が違うポートどうしはそもそも繋げない。ドラッグ中に見た目でも分かるよう
+  // React Flow 側の検証にも渡す（未接続側や単位未設定は制限しない）。
+  const isValidConnection = useCallback(
+    (c: Connection | RfEdge) => {
+      const conn = c as Connection
+      if (!conn.source || !conn.target || !conn.sourceHandle || !conn.targetHandle) return false
+      const a = api.getNode(conn.source)
+      const b = api.getNode(conn.target)
+      if (!a || !b) return false
+      const resolved = resolveConnection(conn, a, b)
+      if (!resolved) return false
+      const { out, input } = resolved
+      if (!out.unit || !input.unit) return true
+      return sameQuantity(out.unit, input.unit)
+    },
+    [api],
   )
 
   const place = useCallback(() => {
@@ -208,6 +246,7 @@ function Canvas() {
             moveNodes(moved.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y })))
           }}
           onConnect={onConnect}
+          isValidConnection={isValidConnection}
           connectionMode={ConnectionMode.Loose}
           connectionRadius={32}
           // ハンドルを「ドラッグせずにクリック」すると React Flow のクリック接続待ちに
@@ -251,32 +290,42 @@ function Canvas() {
   )
 }
 
+type SideTab = 'inspect' | 'files' | 'solve'
+
 function Shell() {
-  const [solveOpen, setSolveOpen] = useState(false)
+  const [tab, setTab] = useState<SideTab>('inspect')
   return (
-    <div className="nc-app">
-      <header className="nc-topbar">
-        <h1>
-          node<span>-calc</span>
-        </h1>
-        <p className="nc-tagline">計算のまとまりを並べて、振って、逆から解く</p>
-        <ProjectControls />
-        <button className="nc-btn nc-btn-primary" onClick={() => setSolveOpen(true)}>逆算</button>
-      </header>
-      {solveOpen && <SolveModal onClose={() => setSolveOpen(false)} />}
+    <ProjectProvider browseFiles={() => setTab('files')}>
+      <div className="nc-app">
+        <header className="nc-topbar">
+          <h1>
+            node<span>-calc</span>
+          </h1>
+          <p className="nc-tagline">計算のまとまりを並べて、振って、逆から解く</p>
+          <ProjectControls />
+          <button className="nc-btn nc-btn-primary" onClick={() => setTab('solve')}>逆算</button>
+        </header>
 
-      <div className="nc-main">
-        <ReactFlowProvider>
-          <Canvas />
-        </ReactFlowProvider>
+        <div className="nc-main">
+          <ReactFlowProvider>
+            <Canvas />
+          </ReactFlowProvider>
 
-        <aside className="nc-side">
-          <div className="nc-side-body">
-            <InspectorPanel />
-          </div>
-        </aside>
+          <aside className="nc-side">
+            <div className="nc-tabs">
+              <button className={tab === 'inspect' ? 'is-active' : ''} onClick={() => setTab('inspect')}>検査</button>
+              <button className={tab === 'files' ? 'is-active' : ''} onClick={() => setTab('files')}>ファイル</button>
+              <button className={tab === 'solve' ? 'is-active' : ''} onClick={() => setTab('solve')}>逆算</button>
+            </div>
+            <div className="nc-side-body">
+              {tab === 'inspect' && <InspectorPanel />}
+              {tab === 'files' && <FilesPanel />}
+              {tab === 'solve' && <SolvePanel />}
+            </div>
+          </aside>
+        </div>
       </div>
-    </div>
+    </ProjectProvider>
   )
 }
 

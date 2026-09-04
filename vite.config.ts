@@ -1,6 +1,9 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { Buffer } from 'node:buffer'
+import { mkdir, readdir, readFile, rename as renameFile, rm, stat, writeFile } from 'node:fs/promises'
+import type { IncomingMessage } from 'node:http'
+import { resolve } from 'node:path'
 import { UNIT_QUANTITIES } from './src/units/catalog.ts'
 
 /** propose_block ツールの入力スキーマ。Anthropic / OpenAI 互換の両方式で使い回す。 */
@@ -202,10 +205,112 @@ function perfProbe(): Plugin {
   }
 }
 
+/** リクエスト本体を文字列として読み切る。 */
+async function readBody(req: IncomingMessage): Promise<string> {
+  const chunks: Uint8Array[] = []
+  for await (const chunk of req) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+/**
+ * プロジェクトファイル（グラフ JSON）をサーバー側のフォルダで管理する API。
+ * 自作ファイルエクスプローラーから使う。Tailscale 越しの iPad など、どの端末から
+ * 開いても同じ一覧・内容を参照できるようにするためのもの。
+ */
+function projectFiles(dir: string): Plugin {
+  /** パス区切りやドット始まりの名前を拒否し、フォルダの外へ出られないようにする。 */
+  const safeName = (raw: unknown): string | null => {
+    const name = String(raw ?? '').trim()
+    if (!name || name.length > 128 || name === '.' || name === '..' || name.startsWith('.')) return null
+    if (/[\\/]/.test(name)) return null
+    return name
+  }
+  return {
+    name: 'node-calc-project-files',
+    async configureServer(server) {
+      await mkdir(dir, { recursive: true })
+      server.middlewares.use('/api/files', async (req, res) => {
+        res.setHeader('content-type', 'application/json; charset=utf-8')
+        const fail = (status: number, message: string) => {
+          res.statusCode = status
+          res.end(JSON.stringify({ error: message }))
+        }
+        try {
+          // connect はマウント位置 /api/files を外して req.url を渡してくる。
+          // 念のため、残っていても動くようプレフィックスはあれば取り除く。
+          let pathname = decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/')
+          if (pathname.startsWith('/api/files')) pathname = pathname.slice('/api/files'.length)
+          const rest = pathname.replace(/^\//, '')
+          const segments = rest ? rest.split('/') : []
+
+          // 一覧
+          if (req.method === 'GET' && !rest) {
+            const entries = await readdir(dir, { withFileTypes: true })
+            const files: Array<{ name: string; size: number; modified: number }> = []
+            for (const entry of entries) {
+              if (!entry.isFile() || entry.name.startsWith('.')) continue
+              const info = await stat(resolve(dir, entry.name))
+              files.push({ name: entry.name, size: info.size, modified: info.mtimeMs })
+            }
+            files.sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+            res.end(JSON.stringify({ files }))
+            return
+          }
+
+          // 名前変更
+          if (segments.length === 2 && segments[1] === 'rename') {
+            if (req.method !== 'POST') return fail(405, 'POSTのみ利用できます')
+            const name = safeName(segments[0])
+            if (!name) return fail(400, 'ファイル名が不正です')
+            const body = JSON.parse(await readBody(req)) as { to?: unknown }
+            const to = safeName(body?.to)
+            if (!to) return fail(400, '新しいファイル名が不正です')
+            if (to !== name) await renameFile(resolve(dir, name), resolve(dir, to))
+            res.end(JSON.stringify({ ok: true }))
+            return
+          }
+
+          // 単一ファイルの読込・保存・削除
+          if (segments.length !== 1 || !segments[0]) return fail(404, 'ファイルが見つかりません')
+          const name = safeName(segments[0])
+          if (!name) return fail(400, 'ファイル名が不正です')
+          const filePath = resolve(dir, name)
+
+          if (req.method === 'GET') {
+            const content = await readFile(filePath, 'utf8')
+            res.setHeader('content-type', 'text/plain; charset=utf-8')
+            res.end(content)
+            return
+          }
+          if (req.method === 'PUT') {
+            // 途中で切れた書き込みが残らないよう、一時ファイルへ書いてから置き換える。
+            const temp = resolve(dir, `.${name}.tmp-${process.pid}-${Date.now()}`)
+            await writeFile(temp, await readBody(req), 'utf8')
+            await renameFile(temp, filePath)
+            res.end(JSON.stringify({ ok: true }))
+            return
+          }
+          if (req.method === 'DELETE') {
+            await rm(filePath)
+            res.end(JSON.stringify({ ok: true }))
+            return
+          }
+          fail(405, 'GET・PUT・DELETEのみ利用できます')
+        } catch (error) {
+          if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+            return fail(404, 'ファイルが見つかりません')
+          }
+          fail(400, error instanceof Error ? error.message : String(error))
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '')
   return {
-    plugins: [react(), aiBlockDesigner(resolveAiConfig(env)), perfProbe()],
+    plugins: [react(), aiBlockDesigner(resolveAiConfig(env)), perfProbe(), projectFiles(resolve(env.PROJECTS_DIR || 'projects'))],
     // Tailscale 越しに他の端末から開けるよう、全インターフェースで待ち受ける。
     server: { port: 5180, host: true, allowedHosts: true },
   }

@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react'
 import { useActions, useUserBlocks } from '../store.tsx'
-import type { BlockPreset } from '../library/presets.ts'
+import { PRESETS, type BlockPreset } from '../library/presets.ts'
 import { NodeIcon } from '../components/NodeIcon.tsx'
 
 const NEW_BLOCK: BlockPreset = {
@@ -24,7 +24,7 @@ export const Palette = memo(function Palette({ place }: Props) {
   const [q, setQ] = useState('')
 
   const groups = useMemo(() => {
-    const all = userBlocks
+    const all = [...PRESETS, ...userBlocks]
     const hit = q.trim()
       ? all.filter((p) => (p.title + p.category + p.calcs.map((c) => c.expr).join(' ')).includes(q.trim()))
       : all
@@ -86,13 +86,13 @@ export const Palette = memo(function Palette({ place }: Props) {
       <input
         className="nc-search"
         value={q}
-        placeholder="保存したブロックを探す"
+        placeholder="ブロックを探す"
         onChange={(e) => setQ(e.target.value)}
         aria-label="ブロック検索"
       />
 
       <div className="nc-palette-list">
-        <h2 className="nc-library-title">保存したブロック</h2>
+        <h2 className="nc-library-title">ブロック</h2>
         {groups.map(([cat, items]) => (
           <section key={cat}>
             <h3>{cat}</h3>
@@ -115,11 +115,7 @@ export const Palette = memo(function Palette({ place }: Props) {
             ))}
           </section>
         ))}
-        {groups.length === 0 && (
-          <p className="nc-hint">
-            {q ? '見つかりませんでした。' : 'まだありません。ブロック右上の「保存」で再利用できます。'}
-          </p>
-        )}
+        {groups.length === 0 && <p className="nc-hint">見つかりませんでした。</p>}
       </div>
     </aside>
   )

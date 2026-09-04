@@ -15,7 +15,7 @@ import {
   isVariable,
   outputPorts,
 } from '../types.ts'
-import { blockRowFactors, unitRatio } from './units.ts'
+import { blockRowFactors, blockRowUnits, inferAstUnit, tryParseUnit, unitRatio, type UnitValue } from './units.ts'
 import { type Ast, FormulaError, parse } from './parser.ts'
 import { FUNCTIONS, excelMod } from './functions.ts'
 import { lookupTable } from './table.ts'
@@ -40,7 +40,15 @@ export type EvalResult = Map<string, NodeResult>
 
 /* ---------------- 式の評価 ---------------- */
 
-export function evalAst(ast: Ast, env: Map<string, number>): number {
+/** 表記が違うだけの同じ量（h と s など）を、右辺を左辺の表記へ揃えてから combine する演算子。 */
+const UNIT_ALIGNED_OPS = new Set(['+', '-', '%', '>', '>=', '<', '<=', '=', '<>'])
+
+/**
+ * unitEnv を渡すと、+ - % や比較演算子で左右の表記が違うだけの同じ量（h と s など）を
+ * 右辺 → 左辺の表記へ換算してから計算する。配線が mm↔m を自動換算するのと同じ考え方で、
+ * 式の中の生の数値どうしを取り違えて足さないようにする。単位が決まらない場合はそのまま計算する。
+ */
+export function evalAst(ast: Ast, env: Map<string, number>, unitEnv?: Map<string, UnitValue>): number {
   switch (ast.t) {
     case 'num':
       return ast.v
@@ -50,10 +58,20 @@ export function evalAst(ast: Ast, env: Map<string, number>): number {
       return v
     }
     case 'neg':
-      return -evalAst(ast.x, env)
+      return -evalAst(ast.x, env, unitEnv)
     case 'bin': {
-      const a = evalAst(ast.l, env)
-      const b = evalAst(ast.r, env)
+      const a = evalAst(ast.l, env, unitEnv)
+      let b = evalAst(ast.r, env, unitEnv)
+      if (unitEnv && UNIT_ALIGNED_OPS.has(ast.op)) {
+        try {
+          const left = inferAstUnit(ast.l, unitEnv)
+          const right = inferAstUnit(ast.r, unitEnv)
+          const ratio = unitRatio(right.label, left.label)
+          if (ratio !== 1) b *= ratio
+        } catch {
+          // 単位が決まらない式は換算せず、そのまま数値だけで計算する。
+        }
+      }
       switch (ast.op) {
         case '+':
           return a + b
@@ -89,7 +107,7 @@ export function evalAst(ast: Ast, env: Map<string, number>): number {
       if (ast.args.length < def.min || ast.args.length > def.max) {
         throw new FormulaError(`${ast.name} の引数の数が違います（${def.sig}）`)
       }
-      return def.fn(...ast.args.map((a) => evalAst(a, env)))
+      return def.fn(...ast.args.map((a) => evalAst(a, env, unitEnv)))
     }
   }
   throw new FormulaError('評価できません')
@@ -258,9 +276,14 @@ export function evaluateGraph(graph: Graph, overrides?: Map<string, number>, cac
     if (!isBlock(node)) return r
 
     const env = new Map<string, number>()
+    // 式の中で h と s のように表記だけ違う同じ量を足し引きできるよう、名前ごとの
+    // 単位も並行して持たせる（evalAst が右辺を左辺の表記へ揃えるのに使う）。
+    const unitEnv = new Map<string, UnitValue>()
     for (const p of node.data.inputs) {
       const v = r.inputs[p.id]
       if (v !== undefined) env.set(p.name, v)
+      const u = tryParseUnit(p.unit)
+      if (u) unitEnv.set(p.name, u)
     }
 
     // 入力欄は式で使うものだけが必須。使っていない入力が残っているだけで
@@ -269,16 +292,19 @@ export function evaluateGraph(graph: Graph, overrides?: Map<string, number>, cac
 
     // 式は入力に書かれた表記のまま計算し、行の出口で指定表記へ直す。
     const factors = blockRowFactors(node.data)
+    const rowUnits = blockRowUnits(node.data)
     for (const [index, row] of node.data.calcs.entries()) {
       let res: RowResult
       try {
         const ast = parse(row.expr)
-        const v = evalAst(ast, env) * factors[index]
+        const v = evalAst(ast, env, unitEnv) * factors[index]
         if (!Number.isFinite(v)) {
           res = { value: NaN, error: Number.isNaN(v) ? '数値になりません' : '値が無限大です' }
         } else {
           res = { value: v }
           env.set(row.name, v)
+          const u = rowUnits[index]
+          if (u) unitEnv.set(row.name, u)
         }
       } catch (e) {
         res = { value: NaN, error: messageOf(e) }

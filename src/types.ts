@@ -63,6 +63,9 @@ export interface MonitorData {
   mode?: 'value' | 'pie'
   /** モニター専用の動的入力。旧データは inputPorts で1入力へ補完する。 */
   inputs?: PortDef[]
+  /** 単一値表示のときだけ使う、表示用の表記（1h を 3600s で見たいときなど）。
+   *  未設定なら接続元の表記のまま。量（次元）が違う表記を選んでも無視する。 */
+  displayUnit?: string
 }
 
 export interface TableInputDef extends PortDef {

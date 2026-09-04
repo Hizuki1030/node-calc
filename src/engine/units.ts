@@ -95,7 +95,12 @@ const KNOWN: Record<string, { dims: Dims; scale: number }> = { ...LEGACY, ...CAT
  */
 const parseCache = new Map<string, UnitValue | null>()
 
-function tryParseUnit(unit: string | undefined | null): UnitValue | null {
+/**
+ * 単位表記を解釈する。失敗しても投げずに null を返す（キャッシュ付き）。
+ * 式の評価は毎フレーム走るので、評価側で単位を引くときもこれを使い、
+ * 同じ記号を毎回パースし直さないようにする。
+ */
+export function tryParseUnit(unit: string | undefined | null): UnitValue | null {
   const key = unit?.trim()
   if (!key) return null
   const hit = parseCache.get(key)
@@ -221,12 +226,15 @@ export function inferAstUnit(ast: Ast, env: Map<string, UnitValue>): UnitValue {
         return power(left, ast.r.v)
       }
       if (ast.op === '%') {
-        if (!sameUnit(left, right)) throw argError('%')
+        // + - と同じく、表記が違うだけの同じ量（h と s など）は評価側で右辺を左辺の表記へ揃える。
+        if (!sameDims(left, right)) throw argError('%')
         return left
       }
       const zeroLeft = ast.l.t === 'num' && ast.l.v === 0
       const zeroRight = ast.r.t === 'num' && ast.r.v === 0
-      if (!sameUnit(left, right) && !zeroLeft && !zeroRight) throw new Error(`${ast.op} の左右の単位が一致しません（${left.label} と ${right.label}）`)
+      // 表記の違い（h と s など）は次元さえ合えば OK。評価側（evalAst）が右辺を左辺の
+      // 表記へ換算してから計算するので、ここでは量（次元）だけを見る。
+      if (!sameDims(left, right) && !zeroLeft && !zeroRight) throw new Error(`${ast.op} の左右の単位が一致しません（${left.label} と ${right.label}）`)
       if (zeroLeft) return ['>', '>=', '<', '<=', '=', '<>'].includes(ast.op) ? dimensionless() : right
       if (zeroRight) return ['>', '>=', '<', '<=', '=', '<>'].includes(ast.op) ? dimensionless() : left
       return ['>', '>=', '<', '<=', '=', '<>'].includes(ast.op) ? dimensionless() : left
@@ -252,17 +260,26 @@ export function inferAstUnit(ast: Ast, env: Map<string, UnitValue>): UnitValue {
   }
 }
 
+interface RowUnitInfo {
+  /** 計算行の値を、その行に指定した表記へ直すための倍率。 */
+  factor: number
+  /** その行の単位（宣言があれば宣言、無ければ式から推論した単位）。評価側が
+   *  この行の名前を後続の式から参照するとき、表記換算に使う。 */
+  unit: UnitValue | undefined
+}
+
 /**
- * 計算行の値を、その行に指定した表記へ直すための倍率。
+ * ブロックの各計算行の単位情報をまとめて求める。blockRowFactors と
+ * blockRowUnits の両方が同じ推論結果を必要とするため、ここで一度だけ計算する。
  *
  * 式そのものは入力に書かれた表記のまま計算する。丸めや定数の意味が
  * 式を書いたときのまま変わらないようにするためで、換算は行の出口でだけ行う。
  * 例えば mm の入力から作った長さを行の単位 m にすると、ここで 1/1000 になる。
  */
-const rowFactorCache = new WeakMap<BlockData, number[]>()
+const rowInfoCache = new WeakMap<BlockData, RowUnitInfo[]>()
 
-export function blockRowFactors(data: BlockData): number[] {
-  const cached = rowFactorCache.get(data)
+function blockRowInfo(data: BlockData): RowUnitInfo[] {
+  const cached = rowInfoCache.get(data)
   if (cached) return cached
 
   const env = new Map<string, UnitValue>()
@@ -270,21 +287,32 @@ export function blockRowFactors(data: BlockData): number[] {
     const unit = tryParseUnit(input.unit)
     if (unit) env.set(input.name, unit)
   }
-  const factors = data.calcs.map((row) => {
-    const declared = tryParseUnit(row.unit)
+  const info = data.calcs.map((row): RowUnitInfo => {
+    const declared = tryParseUnit(row.unit) ?? undefined
     let factor = 1
+    let unit = declared
     try {
       const inferred = inferAstUnit(parse(row.expr), env)
       if (declared && sameDims(inferred, declared)) factor = inferred.scale / declared.scale
-      env.set(row.name, declared ?? inferred)
+      unit = declared ?? inferred
+      env.set(row.name, unit)
     } catch {
       // 単位を決められない式は換算しない。理由は単位チェックの方で知らせる。
       if (declared) env.set(row.name, declared)
     }
-    return Number.isFinite(factor) && factor !== 0 ? factor : 1
+    return { factor: Number.isFinite(factor) && factor !== 0 ? factor : 1, unit }
   })
-  rowFactorCache.set(data, factors)
-  return factors
+  rowInfoCache.set(data, info)
+  return info
+}
+
+export function blockRowFactors(data: BlockData): number[] {
+  return blockRowInfo(data).map((info) => info.factor)
+}
+
+/** 計算行ごとの単位。式の中で前の行を参照するときの表記換算に使う。 */
+export function blockRowUnits(data: BlockData): (UnitValue | undefined)[] {
+  return blockRowInfo(data).map((info) => info.unit)
 }
 
 function declaredUnit(unit: string | undefined, what: string): UnitValue {
