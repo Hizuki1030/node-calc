@@ -60,8 +60,9 @@ export function normalizeGraph(value: unknown): Graph | null {
       const variable: VariableData = {
         title: text(data.title, '変数'),
         value: finite(data.value, 0),
-        mode: data.mode === 'constant' || data.mode === 'select' || data.mode === 'slider' ? data.mode : 'slider',
+        mode: data.mode === 'constant' || data.mode === 'select' || data.mode === 'slider' || data.mode === 'text' ? data.mode : 'slider',
         choices,
+        text: text(data.text) || undefined,
         min: finite(data.min, 0),
         max: finite(data.max, 1000),
         step: finite(data.step, 1),
@@ -114,31 +115,48 @@ export function normalizeGraph(value: unknown): Graph | null {
 
     if (kind === 'table') {
       const headers = Array.isArray(data.headers) ? data.headers.map((header, headerIndex) => text(header, `列${headerIndex + 1}`)) : []
-      const rows = Array.isArray(data.rows) ? data.rows.flatMap((rawRow) => {
-        if (!Array.isArray(rawRow)) return []
-        const row = rawRow.map((cell) => finite(cell, Number.NaN))
-        return row.every(Number.isFinite) ? [row] : []
-      }) : []
       const rawInputs = Array.isArray(data.inputs) ? data.inputs : []
-      const rawOutput = record(data.output)
+      // 旧形式（output 単数）で保存されたファイルも、1個の配列として読み込む。
+      const rawOutputs = Array.isArray(data.outputs) ? data.outputs : data.output ? [data.output] : []
+      const inputs = withUniqueIds(rawInputs.map((raw, inputIndex) => {
+        const input = record(raw)
+        return {
+          id: text(input?.id, `${id}-table-input-${inputIndex + 1}`),
+          name: text(input?.name, `入力${inputIndex + 1}`),
+          unit: text(input?.unit),
+          column: Math.max(0, Math.round(finite(input?.column, inputIndex))),
+          kind: input?.kind === 'text' ? 'text' as const : 'number' as const,
+        }
+      }), `${id}-table-input-`)
+      const outputs = withUniqueIds((rawOutputs.length ? rawOutputs : [null]).map((raw, outputIndex) => {
+        const output = record(raw)
+        return {
+          id: text(output?.id, outputIndex === 0 ? 'out' : `${id}-table-output-${outputIndex + 1}`),
+          name: text(output?.name, outputIndex === 0 ? '出力' : `出力${outputIndex + 1}`),
+          unit: text(output?.unit),
+          column: Math.max(0, Math.round(finite(output?.column, Math.max(0, headers.length - 1)))),
+        }
+      }), `${id}-table-output-`)
+
+      // テキスト入力に指定された列は文字列のまま、それ以外は数値として読み込む。
+      // 数値であるべき列（テキスト入力以外の入力・すべての出力）に不正な値がある行だけ除外する。
+      const textColumns = new Set(inputs.filter((input) => input.kind === 'text').map((input) => input.column))
+      const numericColumns = new Set([
+        ...inputs.filter((input) => input.kind !== 'text').map((input) => input.column),
+        ...outputs.map((output) => output.column),
+      ])
+      const rows = Array.isArray(data.rows) ? data.rows.flatMap((rawRow): TableData['rows'][number][] => {
+        if (!Array.isArray(rawRow)) return []
+        const row = rawRow.map((cell, col) => (textColumns.has(col) ? text(cell) : finite(cell, Number.NaN)))
+        const valid = row.every((cell, col) => !numericColumns.has(col) || (typeof cell === 'number' && Number.isFinite(cell)))
+        return valid ? [row] : []
+      }) : []
+
       const table: TableData = {
         title: text(data.title, 'CSVテーブル変換'),
         mode: data.mode === 'nearest' ? 'nearest' : 'linear',
-        inputs: withUniqueIds(rawInputs.map((raw, inputIndex) => {
-          const input = record(raw)
-          return {
-            id: text(input?.id, `${id}-table-input-${inputIndex + 1}`),
-            name: text(input?.name, `入力${inputIndex + 1}`),
-            unit: text(input?.unit),
-            column: Math.max(0, Math.round(finite(input?.column, inputIndex))),
-          }
-        }), `${id}-table-input-`),
-        output: {
-          id: text(rawOutput?.id, 'out'),
-          name: text(rawOutput?.name, '出力'),
-          unit: text(rawOutput?.unit),
-          column: Math.max(0, Math.round(finite(rawOutput?.column, Math.max(0, headers.length - 1)))),
-        },
+        inputs,
+        outputs,
         headers,
         rows,
         sourceName: text(data.sourceName) || undefined,

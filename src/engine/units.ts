@@ -326,7 +326,8 @@ export function checkGraphUnits(graph: Graph): UnitReport {
     issues.push({ nodeId, key: `${nodeId}:${key}`, message, level })
 
   for (const node of graph.nodes) {
-    if (isVariable(node)) {
+    // テキスト変数は単位を持たない（数式や単位換算の対象にならない文字列専用）。
+    if (isVariable(node) && (node.data.mode ?? 'slider') !== 'text') {
       try { declaredUnit(node.data.unit, node.data.title || 'ノード') } catch (error) { add(node.id, 'unit', (error as Error).message) }
     }
     if (isBlock(node)) {
@@ -353,12 +354,15 @@ export function checkGraphUnits(graph: Graph): UnitReport {
       }
     }
     if (isTable(node)) {
-      for (const input of node.data.inputs) {
+      // テキスト入力（完全一致検索用）は単位を持たない。
+      for (const input of node.data.inputs.filter((input) => input.kind !== 'text')) {
         try { declaredUnit(input.unit, `入力「${input.name}」`) }
         catch (error) { add(node.id, input.id, (error as Error).message) }
       }
-      try { declaredUnit(node.data.output.unit, `出力「${node.data.output.name}」`) }
-      catch (error) { add(node.id, node.data.output.id, (error as Error).message) }
+      for (const output of node.data.outputs) {
+        try { declaredUnit(output.unit, `出力「${output.name}」`) }
+        catch (error) { add(node.id, output.id, (error as Error).message) }
+      }
     }
   }
 

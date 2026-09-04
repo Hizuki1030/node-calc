@@ -4,10 +4,10 @@ import { parseNumericTable, splitHeaderUnit } from '../engine/table.ts'
 import { uid } from '../library/presets.ts'
 import { useStore } from '../store.tsx'
 import { ImeInput } from '../components/ImeField.tsx'
-import { isTable, type TableInputDef } from '../types.ts'
+import { isTable, type TableInputDef, type TableOutputDef } from '../types.ts'
 
 export function TableEditorModal() {
-  const { graph, selected, select, patchTable, addTableInput, removeTableInput, removeNode } = useStore()
+  const { graph, selected, select, patchTable, addTableInput, removeTableInput, addTableOutput, removeTableOutput, removeNode } = useStore()
   const node = graph.nodes.find((item) => item.id === selected)
   const [message, setMessage] = useState('')
   if (!node || !isTable(node)) return null
@@ -21,11 +21,14 @@ export function TableEditorModal() {
       const outputColumn = parsed.headers.length - 1
       const inputs: TableInputDef[] = parsed.headers.slice(0, -1).map((header, index) => {
         const meta = splitHeaderUnit(header)
+        // 数値に変換できる値が1つもない列は、完全一致検索用のテキスト入力として読み込む。
+        const isText = parsed.textColumns[index]
         return {
           id: data.inputs[index]?.id ?? uid('ti'),
           name: meta.name || `入力${index + 1}`,
-          unit: meta.unit || data.inputs[index]?.unit || '',
+          unit: isText ? '' : (meta.unit || data.inputs[index]?.unit || ''),
           column: index,
+          kind: isText ? 'text' : 'number',
         }
       })
       const outputMeta = splitHeaderUnit(parsed.headers[outputColumn])
@@ -34,12 +37,13 @@ export function TableEditorModal() {
         rows: parsed.rows,
         sourceName: file.name,
         inputs,
-        output: {
-          id: data.output.id || 'out',
+        // 読み込み直後は最終列を1個だけの出力にする。複数出力は読み込んでから手動で追加する。
+        outputs: [{
+          id: data.outputs[0]?.id || 'out',
           name: outputMeta.name || '出力',
-          unit: outputMeta.unit || data.output.unit || '',
+          unit: outputMeta.unit || data.outputs[0]?.unit || '',
           column: outputColumn,
-        },
+        }],
       })
       setMessage(`${parsed.rows.length}行を読み込みました${parsed.skippedRows ? `（数値でない${parsed.skippedRows}行を除外）` : ''}`)
     } catch (error) {
@@ -51,6 +55,9 @@ export function TableEditorModal() {
 
   const patchInput = (id: string, patch: Partial<TableInputDef>) => patchTable(node.id, {
     inputs: data.inputs.map((input) => input.id === id ? { ...input, ...patch } : input),
+  })
+  const patchOutput = (id: string, patch: Partial<TableOutputDef>) => patchTable(node.id, {
+    outputs: data.outputs.map((output) => output.id === id ? { ...output, ...patch } : output),
   })
 
   return <div className="nc-modal-backdrop" onMouseDown={() => select(null)}>
@@ -86,26 +93,47 @@ export function TableEditorModal() {
         <section>
           <h4 className="nc-sub">入力列 <small>複数指定できます</small></h4>
           <div className="nc-table-map-list">
-            {data.inputs.map((input) => <div className="nc-table-map-row" key={input.id}>
-              <ImeInput className="nc-text" value={input.name} placeholder="入力名" onCommit={(next) => patchInput(input.id, { name: next })} />
-              <UnitPicker value={input.unit} onChange={(unit) => patchInput(input.id, { unit })} ariaLabel={`${input.name}の単位`} />
-              <select className="nc-select" value={input.column} onChange={(event) => patchInput(input.id, { column: Number(event.target.value) })} aria-label={`${input.name}のCSV列`}>
-                {data.headers.map((header, index) => <option value={index} key={`${header}:${index}`}>{header}</option>)}
-              </select>
-              <button className="nc-x" disabled={data.inputs.length <= 1} onClick={() => removeTableInput(node.id, input.id)} title="入力を削除">×</button>
-            </div>)}
+            {data.inputs.map((input) => {
+              const isText = input.kind === 'text'
+              return <div className="nc-table-map-row nc-table-map-row-input" key={input.id}>
+                <ImeInput className="nc-text" value={input.name} placeholder="入力名" onCommit={(next) => patchInput(input.id, { name: next })} />
+                <select
+                  className="nc-select"
+                  value={input.kind ?? 'number'}
+                  onChange={(event) => {
+                    const kind = event.target.value as 'number' | 'text'
+                    patchInput(input.id, { kind, unit: kind === 'text' ? '' : input.unit })
+                  }}
+                  aria-label={`${input.name}の種別`}
+                >
+                  <option value="number">数値</option>
+                  <option value="text">テキスト</option>
+                </select>
+                {isText
+                  ? <span className="nc-table-text-note">完全一致で検索</span>
+                  : <UnitPicker value={input.unit} onChange={(unit) => patchInput(input.id, { unit })} ariaLabel={`${input.name}の単位`} />}
+                <select className="nc-select" value={input.column} onChange={(event) => patchInput(input.id, { column: Number(event.target.value) })} aria-label={`${input.name}のCSV列`}>
+                  {data.headers.map((header, index) => <option value={index} key={`${header}:${index}`}>{header}</option>)}
+                </select>
+                <button className="nc-x" disabled={data.inputs.length <= 1} onClick={() => removeTableInput(node.id, input.id)} title="入力を削除">×</button>
+              </div>
+            })}
           </div>
           <button className="nc-btn nc-btn-ghost" disabled={!data.headers.length} onClick={() => addTableInput(node.id)}>＋ 入力を追加</button>
         </section>
         <section>
-          <h4 className="nc-sub">出力列</h4>
-          <div className="nc-table-output-map">
-            <ImeInput className="nc-text" value={data.output.name} placeholder="出力名" onCommit={(next) => patchTable(node.id, { output: { ...data.output, name: next } })} />
-            <UnitPicker value={data.output.unit} onChange={(unit) => patchTable(node.id, { output: { ...data.output, unit } })} ariaLabel={`${data.output.name}の単位`} />
-            <select className="nc-select" value={data.output.column} onChange={(event) => patchTable(node.id, { output: { ...data.output, column: Number(event.target.value) } })} aria-label="出力のCSV列">
-              {data.headers.map((header, index) => <option value={index} key={`${header}:${index}`}>{header}</option>)}
-            </select>
+          <h4 className="nc-sub">出力列 <small>複数指定できます</small></h4>
+          <div className="nc-table-map-list">
+            {data.outputs.map((output) => <div className="nc-table-map-row" key={output.id}>
+              <ImeInput className="nc-text" value={output.name} placeholder="出力名" onCommit={(next) => patchOutput(output.id, { name: next })} />
+              <UnitPicker value={output.unit} onChange={(unit) => patchOutput(output.id, { unit })} ariaLabel={`${output.name}の単位`} />
+              <select className="nc-select" value={output.column} onChange={(event) => patchOutput(output.id, { column: Number(event.target.value) })} aria-label={`${output.name}のCSV列`}>
+                {data.headers.map((header, index) => <option value={index} key={`${header}:${index}`}>{header}</option>)}
+              </select>
+              <button className="nc-x" disabled={data.outputs.length <= 1} onClick={() => removeTableOutput(node.id, output.id)} title="出力を削除">×</button>
+            </div>)}
           </div>
+          <button className="nc-btn nc-btn-ghost" disabled={!data.headers.length} onClick={() => addTableOutput(node.id)}>＋ 出力を追加</button>
           <label className="nc-table-digits">表示桁数<input className="nc-num" type="number" min={0} max={12} value={data.digits} onChange={(event) => patchTable(node.id, { digits: Math.max(0, Math.min(12, Number(event.target.value))) })} /></label>
         </section>
       </div>

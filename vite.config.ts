@@ -1,9 +1,10 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { Buffer } from 'node:buffer'
-import { mkdir, readdir, readFile, rename as renameFile, rm, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, rename as renameFile, rm, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage } from 'node:http'
-import { resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { relative, resolve, sep } from 'node:path'
 import { UNIT_QUANTITIES } from './src/units/catalog.ts'
 
 /** propose_block ツールの入力スキーマ。Anthropic / OpenAI 互換の両方式で使い回す。 */
@@ -307,10 +308,103 @@ function projectFiles(dir: string): Plugin {
   }
 }
 
+/**
+ * ホームディレクトリ配下を自作ファイルエクスプローラーで辿るための読み取り専用 API。
+ * 「プロジェクトを開く」画面から、projects フォルダの外にある .json も見つけられるようにする。
+ * サーバー側がファイルシステムへ触れる窓口なので、ホームディレクトリの外へは
+ * 絶対に出られないよう、どのパスも resolve 後に relative でホーム配下かを確かめる。
+ */
+function fileBrowser(): Plugin {
+  const home = homedir()
+
+  /** ホームからの相対パス（空文字はホーム自身）を安全な絶対パスへ直す。範囲外なら null。 */
+  const resolveInHome = (rawRelative: unknown): string | null => {
+    const requested = typeof rawRelative === 'string' ? rawRelative : ''
+    const target = resolve(home, requested || '.')
+    const rel = relative(home, target)
+    if (rel === '') return target // ホーム自身
+    if (rel.startsWith('..') || rel.startsWith(`.${sep}..`)) return null
+    // resolve は絶対パスを渡されるとそのまま返すので、二重チェックで弾く。
+    if (resolve(rel) === rel) return null
+    return target
+  }
+
+  return {
+    name: 'node-calc-file-browser',
+    configureServer(server) {
+      server.middlewares.use('/api/browse', async (req, res) => {
+        res.setHeader('content-type', 'application/json; charset=utf-8')
+        const fail = (status: number, message: string) => {
+          res.statusCode = status
+          res.end(JSON.stringify({ error: message }))
+        }
+        try {
+          const url = new URL(req.url ?? '/', 'http://localhost')
+          const pathname = url.pathname
+
+          // ファイル読み込み: /api/browse/file?path=<ホームからの相対パス>
+          if (pathname === '/file' || pathname === '/' || pathname === '') {
+            const isFile = pathname === '/file'
+            if (req.method !== 'GET') return fail(405, 'GETのみ利用できます')
+            if (isFile) {
+              const requested = url.searchParams.get('path')
+              const target = resolveInHome(requested)
+              if (!target) return fail(400, 'ホームディレクトリの外は開けません')
+              if (!target.toLowerCase().endsWith('.json')) return fail(400, '.jsonファイルのみ開けます')
+              const info = await stat(target)
+              if (!info.isFile()) return fail(400, 'ファイルではありません')
+              const content = await readFile(target, 'utf8')
+              res.setHeader('content-type', 'text/plain; charset=utf-8')
+              res.end(content)
+              return
+            }
+
+            // 一覧: /api/browse?dir=<ホームからの相対パス>
+            const requestedDir = url.searchParams.get('dir')
+            const target = resolveInHome(requestedDir)
+            if (!target) return fail(400, 'ホームディレクトリの外は見られません')
+            const entries = await readdir(target, { withFileTypes: true })
+            const listed: Array<{ name: string; type: 'dir' | 'file'; size: number; modified: number }> = []
+            for (const entry of entries) {
+              if (entry.name.startsWith('.')) continue
+              const entryPath = resolve(target, entry.name)
+              // シンボリックリンクは辿らない。ホーム外への抜け道にしない。
+              const linkInfo = await lstat(entryPath)
+              if (linkInfo.isSymbolicLink()) continue
+              if (entry.isDirectory()) {
+                listed.push({ name: entry.name, type: 'dir', size: 0, modified: linkInfo.mtimeMs })
+              } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.json')) {
+                listed.push({ name: entry.name, type: 'file', size: linkInfo.size, modified: linkInfo.mtimeMs })
+              }
+            }
+            listed.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name, 'ja') : a.type === 'dir' ? -1 : 1))
+            const dir = relative(home, target)
+            const parent = target === home ? null : relative(home, resolve(target, '..'))
+            res.end(JSON.stringify({ home, dir, parent, entries: listed }))
+            return
+          }
+          fail(404, '見つかりません')
+        } catch (error) {
+          if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+            return fail(404, 'フォルダまたはファイルが見つかりません')
+          }
+          fail(400, error instanceof Error ? error.message : String(error))
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '')
   return {
-    plugins: [react(), aiBlockDesigner(resolveAiConfig(env)), perfProbe(), projectFiles(resolve(env.PROJECTS_DIR || 'projects'))],
+    plugins: [
+      react(),
+      aiBlockDesigner(resolveAiConfig(env)),
+      perfProbe(),
+      projectFiles(resolve(env.PROJECTS_DIR || 'projects')),
+      fileBrowser(),
+    ],
     // Tailscale 越しに他の端末から開けるよう、全インターフェースで待ち受ける。
     server: { port: 5180, host: true, allowedHosts: true },
   }

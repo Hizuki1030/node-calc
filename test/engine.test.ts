@@ -158,19 +158,95 @@ const dcTable = (mode: TableData['mode']): TableData => ({
     { id: 'vin', name: 'Vin', unit: 'V', column: 0 },
     { id: 'iout', name: 'Iout', unit: 'A', column: 1 },
   ],
-  output: { id: 'out', name: 'Efficiency', unit: '%', column: 2 },
+  outputs: [{ id: 'out', name: 'Efficiency', unit: '%', column: 2 }],
   rows: [[5, 1, 80], [5, 3, 84], [12, 1, 86], [12, 3, 90]],
 })
 
 test('テーブル変換は複数入力の最近傍を選べる', () => {
-  assert.deepEqual(lookupTable(dcTable('nearest'), [5.4, 2.8]), { value: 84, method: 'nearest' })
-  assert.deepEqual(lookupTable(dcTable('nearest'), [12, 3]), { value: 90, method: 'exact' })
+  assert.deepEqual(lookupTable(dcTable('nearest'), [5.4, 2.8]), { values: [84], method: 'nearest' })
+  assert.deepEqual(lookupTable(dcTable('nearest'), [12, 3]), { values: [90], method: 'exact' })
 })
 
 test('テーブル変換は2入力を双線形補間し、範囲外を端へ固定する', () => {
   const table = dcTable('linear')
-  assert.deepEqual(lookupTable(table, [8.5, 2]), { value: 85, method: 'linear' })
-  assert.deepEqual(lookupTable(table, [100, 3]), { value: 90, method: 'exact' })
+  assert.deepEqual(lookupTable(table, [8.5, 2]), { values: [85], method: 'linear' })
+  assert.deepEqual(lookupTable(table, [100, 3]), { values: [90], method: 'exact' })
+})
+
+test('テーブル変換は複数の出力を同時に返せる', () => {
+  const table: TableData = {
+    title: '2出力テーブル', mode: 'linear', digits: 3,
+    headers: ['Vin [V]', 'Iout [A]', 'Efficiency [%]', 'Temp [C]'],
+    inputs: [
+      { id: 'vin', name: 'Vin', unit: 'V', column: 0 },
+      { id: 'iout', name: 'Iout', unit: 'A', column: 1 },
+    ],
+    outputs: [
+      { id: 'eff', name: 'Efficiency', unit: '%', column: 2 },
+      { id: 'temp', name: 'Temp', unit: 'C', column: 3 },
+    ],
+    rows: [[5, 1, 80, 30], [5, 3, 84, 40], [12, 1, 86, 32], [12, 3, 90, 42]],
+  }
+  assert.deepEqual(lookupTable(table, [8.5, 2]), { values: [85, 36], method: 'linear' })
+  assert.deepEqual(lookupTable(table, [12, 3]), { values: [90, 42], method: 'exact' })
+})
+
+test('テーブル変換はテキスト入力を完全一致で絞り込んでから数値入力で検索する', () => {
+  const table: TableData = {
+    title: '地域別単価', mode: 'linear', digits: 2,
+    headers: ['地域', '数量', '単価'],
+    inputs: [
+      { id: 'region', name: '地域', unit: '', column: 0, kind: 'text' },
+      { id: 'qty', name: '数量', unit: '個', column: 1 },
+    ],
+    outputs: [{ id: 'price', name: '単価', unit: '円', column: 2 }],
+    rows: [
+      ['東京', 10, 100],
+      ['東京', 20, 90],
+      ['大阪', 10, 95],
+      ['大阪', 20, 85],
+    ],
+  }
+  assert.deepEqual(lookupTable(table, ['東京', 15]), { values: [95], method: 'linear' })
+  assert.deepEqual(lookupTable(table, ['大阪', 10]), { values: [95], method: 'exact' })
+  assert.throws(() => lookupTable(table, ['福岡', 10]))
+})
+
+test('全入力がテキストのテーブルは一致した行をそのまま返す', () => {
+  const table: TableData = {
+    title: 'コード表', mode: 'nearest', digits: 0,
+    headers: ['コード', '名称', '値'],
+    inputs: [{ id: 'code', name: 'コード', unit: '', column: 0, kind: 'text' }],
+    outputs: [{ id: 'value', name: '値', unit: '', column: 2 }],
+    rows: [['A', '名称A', 1], ['B', '名称B', 2]],
+  }
+  assert.deepEqual(lookupTable(table, ['B']), { values: [2], method: 'exact' })
+})
+
+test('テキスト変数をCSVテーブル変換のテキスト入力へつなげてグラフ内で評価できる', () => {
+  const table: TableData = {
+    title: '地域別単価', mode: 'nearest', digits: 2,
+    headers: ['地域', '単価'],
+    inputs: [{ id: 'region', name: '地域', unit: '', column: 0, kind: 'text' }],
+    outputs: [{ id: 'price', name: '単価', unit: '円', column: 1 }],
+    rows: [['東京', 100], ['大阪', 90]],
+  }
+  const g: Graph = {
+    nextId: 4,
+    nodes: [
+      { id: 'region', kind: 'variable', x: 0, y: 0, data: { title: '地域', value: 0, mode: 'text', text: '大阪', min: 0, max: 0, step: 1, sweep: false } },
+      { id: 'table', kind: 'table', x: 0, y: 0, data: table },
+      { id: 'result', kind: 'result', x: 0, y: 0, data: { title: '単価', target: null, digits: 2 } },
+    ],
+    edges: [
+      { id: 'e1', source: 'region', sourcePort: 'out', target: 'table', targetPort: 'region' },
+      { id: 'e2', source: 'table', sourcePort: 'price', target: 'result', targetPort: 'in' },
+    ],
+  }
+  const result = evaluateGraph(g)
+  assert.equal(result.get('table')?.outputs.price, 90)
+  assert.equal(result.get('result')?.outputs.in, 90)
+  assert.equal(checkGraphUnits(g).ok, true)
 })
 
 test('CSVテーブルノードをグラフ内で評価できる', () => {
@@ -204,8 +280,22 @@ test('保存されたCSVテーブルノードを現在形式へ復元できる',
   assert.equal(graph.nodes[0].kind, 'table')
   const data = graph.nodes[0].data as TableData
   assert.equal(data.inputs.length, 2)
-  assert.equal(data.output.unit, '%')
+  assert.equal(data.outputs.length, 1)
+  assert.equal(data.outputs[0].unit, '%')
   assert.deepEqual(data.rows[3], [12, 3, 90])
+})
+
+test('旧形式（output 単数）で保存されたCSVテーブルノードも復元できる', () => {
+  const { outputs, ...legacyTable } = dcTable('linear')
+  const graph = normalizeGraph({
+    nextId: 2,
+    nodes: [{ id: 'n1', kind: 'table', x: 10, y: 20, data: { ...legacyTable, output: outputs[0] } }],
+    edges: [],
+  })!
+  const data = graph.nodes[0].data as TableData
+  assert.equal(data.outputs.length, 1)
+  assert.equal(data.outputs[0].id, 'out')
+  assert.equal(data.outputs[0].unit, '%')
 })
 
 test('ポート id が重複した保存データは、読み込み時に別 id へ振り直す', () => {
@@ -737,10 +827,10 @@ test('持ち越した評価結果はスイープの上書き値を無視しな�
 
 test('テーブルの前処理を使い回しても、行を差し替えれば新しい値を返す', () => {
   const table = dcTable('linear')
-  assert.equal(lookupTable(table, [8.5, 2]).value, 85)
-  assert.equal(lookupTable(table, [8.5, 2]).value, 85) // キャッシュ経由
+  assert.equal(lookupTable(table, [8.5, 2]).values[0], 85)
+  assert.equal(lookupTable(table, [8.5, 2]).values[0], 85) // キャッシュ経由
   const replaced: TableData = { ...table, rows: table.rows.map((row) => [row[0], row[1], row[2] + 5]) }
-  assert.equal(lookupTable(replaced, [8.5, 2]).value, 90)
+  assert.equal(lookupTable(replaced, [8.5, 2]).values[0], 90)
 })
 
 test('格子が欠けた散布データも近傍の重み付けで連続に変化する', () => {
@@ -751,8 +841,8 @@ test('格子が欠けた散布データも近傍の重み付けで連続に変�
   const low = lookupTable(sparse, [11, 2.9])
   const high = lookupTable(sparse, [11.5, 2.9])
   assert.equal(low.method, 'continuous-neighbors')
-  assert.ok(Number.isFinite(low.value) && Number.isFinite(high.value))
-  assert.ok(Math.abs(low.value - high.value) < 2, '近い入力では近い値になる')
+  assert.ok(Number.isFinite(low.values[0]) && Number.isFinite(high.values[0]))
+  assert.ok(Math.abs(low.values[0] - high.values[0]) < 2, '近い入力では近い値になる')
 })
 
 test('大きなテーブルでも端の値と補間値を返せる', () => {
@@ -762,10 +852,10 @@ test('大きなテーブルでも端の値と補間値を返せる', () => {
     title: '大きな表', mode: 'linear', digits: 2,
     headers: ['x', 'y', 'z'],
     inputs: [{ id: 'x', name: 'x', unit: '', column: 0 }, { id: 'y', name: 'y', unit: '', column: 1 }],
-    output: { id: 'out', name: 'z', unit: '', column: 2 },
+    outputs: [{ id: 'out', name: 'z', unit: '', column: 2 }],
     rows,
   }
-  assert.deepEqual(lookupTable(big, [399, 39]), { value: 837, method: 'exact' })
-  assert.deepEqual(lookupTable(big, [10.5, 20]), { value: 41, method: 'linear' })
-  assert.deepEqual(lookupTable(big, [-5, 100]), { value: 39, method: 'exact' })
+  assert.deepEqual(lookupTable(big, [399, 39]), { values: [837], method: 'exact' })
+  assert.deepEqual(lookupTable(big, [10.5, 20]), { values: [41], method: 'linear' })
+  assert.deepEqual(lookupTable(big, [-5, 100]), { values: [39], method: 'exact' })
 })

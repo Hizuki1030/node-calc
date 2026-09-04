@@ -36,15 +36,18 @@ export interface BlockData {
 export interface VariableData {
   title: string
   value: number
-  /** 値の与え方: 固定値 / 候補リスト / 範囲スライダー */
-  mode?: 'constant' | 'select' | 'slider'
+  /** 値の与え方: 固定値 / 候補リスト / 範囲スライダー / 文字列。
+   *  'text' は数式の計算には使えず、CSVテーブル変換のテキスト入力（完全一致検索）専用。 */
+  mode?: 'constant' | 'select' | 'slider' | 'text'
   /** mode === 'select' のときに選べる数値 */
   choices?: number[]
+  /** mode === 'text' のときの値。 */
+  text?: string
   min: number
   max: number
   step: number
   unit?: string
-  /** スイープ・逆算の対象にするか */
+  /** スイープ・逆算の対象にするか。text モードでは意味を持たない。 */
   sweep: boolean
 }
 
@@ -68,23 +71,28 @@ export interface MonitorData {
   displayUnit?: string
 }
 
+/** CSVの1セルの値。数値列は number、テキスト列（完全一致検索用）は string のまま保持する。 */
+export type TableCell = number | string
+
 export interface TableInputDef extends PortDef {
   /** CSV内で参照する列番号。 */
   column: number
+  /** 'text' なら数値化せず、完全一致でのみ絞り込む文字列列として扱う。省略時は 'number'。 */
+  kind?: 'number' | 'text'
 }
 
 export interface TableOutputDef extends PortDef {
   column: number
 }
 
-/** CSVの離散データを最近傍または補間で連続的な値へ変換するノード。 */
+/** CSVの離散データを最近傍または補間で連続的な値へ変換するノード。複数出力を持てる。 */
 export interface TableData {
   title: string
   mode: 'nearest' | 'linear'
   inputs: TableInputDef[]
-  output: TableOutputDef
+  outputs: TableOutputDef[]
   headers: string[]
-  rows: number[][]
+  rows: TableCell[][]
   sourceName?: string
   digits: number
 }
@@ -141,7 +149,7 @@ export function outputPorts(n: CalcNode): PortDef[] {
   if (isVariable(n)) return [{ id: 'out', name: n.data.title, unit: n.data.unit ?? '' }]
   if (isBlock(n))
     return n.data.calcs.filter((c) => c.exposed).map((c) => ({ id: c.id, name: c.name, unit: c.unit ?? '' }))
-  if (isTable(n)) return [n.data.output]
+  if (isTable(n)) return n.data.outputs
   return []
 }
 

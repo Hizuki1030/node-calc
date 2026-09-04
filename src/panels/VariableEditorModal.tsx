@@ -10,6 +10,7 @@ const MODES = [
   { key: 'constant', label: '定数', note: '値は固定' },
   { key: 'select', label: 'リスト', note: '候補から選ぶ' },
   { key: 'slider', label: 'スライダー', note: '範囲で動かす' },
+  { key: 'text', label: 'テキスト', note: '文字列（テーブル検索用）' },
 ] as const
 
 export function VariableEditorModal() {
@@ -51,7 +52,9 @@ export function VariableEditorModal() {
         </div>
         <div className="nc-variable-config">
           <label>現在値</label>
-          {mode === 'select' ? (
+          {mode === 'text' ? (
+            <ImeInput className="nc-text" value={d.text ?? ''} placeholder="例: 東京" onCommit={(next) => patchVariable(node.id, { text: next })} aria-label="変数の値" />
+          ) : mode === 'select' ? (
             <select className="nc-select" value={d.value} onChange={(e) => setValue(Number(e.target.value))}>
               {(d.choices ?? []).map((value) => <option key={value} value={value}>{value}</option>)}
             </select>
@@ -83,12 +86,20 @@ export function VariableEditorModal() {
             <label>候補</label>
             <ImeTextarea className="nc-textarea" rows={3} value={choicesText} placeholder="例: 10, 20, 50" onCommit={updateChoices} />
           </>}
-          <label>単位 *</label>
-          <UnitPicker value={d.unit ?? ''} onChange={(unit) => patchVariable(node.id, { unit })} ariaLabel={`${d.title}の単位`} />
+          {mode !== 'text' && <>
+            <label>単位 *</label>
+            <UnitPicker value={d.unit ?? ''} onChange={(unit) => patchVariable(node.id, { unit })} ariaLabel={`${d.title}の単位`} />
+          </>}
+          {mode === 'text' && <p className="nc-hint">テキストは数式には使えません。CSVテーブル変換のテキスト入力（完全一致検索）につないでください。</p>}
         </div>
         <footer className="nc-modal-actions">
           <button className="nc-btn nc-btn-danger" onClick={() => removeNode(node.id)}>削除</button>
-          <button className="nc-btn nc-btn-primary" disabled={!d.unit?.trim()} title={!d.unit?.trim() ? '単位を入力してください' : undefined} onClick={() => select(null)}>完了</button>
+          <button
+            className="nc-btn nc-btn-primary"
+            disabled={mode !== 'text' && !d.unit?.trim()}
+            title={mode !== 'text' && !d.unit?.trim() ? '単位を入力してください' : undefined}
+            onClick={() => select(null)}
+          >完了</button>
         </footer>
       </section>
     </div>
