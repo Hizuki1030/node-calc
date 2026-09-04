@@ -1,20 +1,26 @@
 import { memo, type CSSProperties } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { useIncomingColor, useIncomingLabel, useNode, useNodeResult, useOutgoingLabel, useOutputColor } from '../store.tsx'
-import { isTable, type PortDef, type TableOutputDef } from '../types.ts'
+import { isTable, type TableInputDef, type TableOutputDef } from '../types.ts'
 import { fmtNum } from '../format.ts'
 import { useHandleSync } from './useHandleSync.ts'
 import { NodeIcon } from '../components/NodeIcon.tsx'
 
-/** 入力ポート 1 行。ネット名だけを個別に購読する。 */
-const TablePort = memo(function TablePort({ nodeId, port }: { nodeId: string; port: PortDef }) {
+/** 入力ポート 1 行。ネット名だけを個別に購読する。テキスト入力は数値と見分けがつくよう印を出す。 */
+const TablePort = memo(function TablePort({ nodeId, port, currentText }: {
+  nodeId: string; port: TableInputDef; currentText?: string
+}) {
   const label = useIncomingLabel(nodeId, port.id)
   const color = useIncomingColor(nodeId, port.id)
+  const isText = port.kind === 'text'
   return (
-    <div className="nc-table-port" style={{ '--nc-port': color } as CSSProperties}>
+    <div className={`nc-table-port${isText ? ' is-text' : ''}`} style={{ '--nc-port': color } as CSSProperties}>
       <Handle type="target" position={Position.Left} id={port.id} className="nc-handle nc-handle-table" />
       <span>{port.name}</span>
-      {port.unit && <small>[{port.unit}]</small>}
+      {isText
+        ? <small className="nc-table-port-kind" title="テキスト入力（完全一致で検索）">Aa</small>
+        : port.unit && <small>[{port.unit}]</small>}
+      {isText && currentText && <em className="nc-table-port-value">"{currentText}"</em>}
       {label && <b className="nc-net-label nc-net-label-in">{label}</b>}
     </div>
   )
@@ -55,7 +61,9 @@ export const TableNode = memo(function TableNode({ id, selected }: NodeProps) {
       <em>{data.mode === 'nearest' ? '最近傍' : '連続補間'}</em>
     </div>
     <div className="nc-table-inputs">
-      {data.inputs.map((input) => <TablePort key={input.id} nodeId={id} port={input} />)}
+      {data.inputs.map((input) => (
+        <TablePort key={input.id} nodeId={id} port={input} currentText={result?.texts[input.id]} />
+      ))}
     </div>
     {data.outputs.map((output) => (
       <TableOutputPort

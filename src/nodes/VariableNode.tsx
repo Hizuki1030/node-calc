@@ -26,7 +26,7 @@ export const VariableNode = memo(function VariableNode({ id, selected }: NodePro
     >
       <div className="nc-compact-title"><NodeIcon kind="variable" />{d.title || '変数'}</div>
       {mode === 'text'
-        ? <div className="nc-var-compact-value nc-mono">{d.text || '（未入力）'}</div>
+        ? <div className="nc-var-compact-value nc-mono" title={d.text || undefined}>{d.text || '（未入力）'}</div>
         : <div className="nc-var-compact-value nc-mono">{fmtStepNum(d.value, d.step)}<em>{d.unit}</em></div>}
       <span className="nc-var-mode">{MODE_LABEL[mode]}</span>
       {label && <span className="nc-net-label nc-net-label-out">{label}</span>}

@@ -32,6 +32,7 @@ export function FileBrowserModal({ onClose }: { onClose(): void }) {
   const [entries, setEntries] = useState<BrowseEntry[]>([])
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -52,6 +53,12 @@ export function FileBrowserModal({ onClose }: { onClose(): void }) {
     return () => { cancelled = true }
   }, [dir])
 
+  // フォルダを移動したら、前のフォルダで絞り込んでいたキーワードは持ち越さない。
+  const moveTo = (next: string) => {
+    setQuery('')
+    setDir(next)
+  }
+
   const open = async (entry: BrowseEntry) => {
     const path = dir ? `${dir}/${entry.name}` : entry.name
     try {
@@ -62,8 +69,11 @@ export function FileBrowserModal({ onClose }: { onClose(): void }) {
     }
   }
 
-  const folders = entries.filter((entry) => entry.type === 'dir')
-  const files = entries.filter((entry) => entry.type === 'file')
+  const q = query.trim().toLowerCase()
+  const matches = (entry: BrowseEntry) => !q || entry.name.toLowerCase().includes(q)
+  const folders = entries.filter((entry) => entry.type === 'dir' && matches(entry))
+  const files = entries.filter((entry) => entry.type === 'file' && matches(entry))
+  const hiddenByQuery = q && (folders.length + files.length) < entries.length
 
   return (
     <div className="nc-modal-backdrop" onMouseDown={onClose}>
@@ -76,22 +86,31 @@ export function FileBrowserModal({ onClose }: { onClose(): void }) {
         <nav className="nc-browser-crumbs">
           {crumbsOf(dir).map((crumb, index, all) => (
             <span key={crumb.path}>
-              <button className="nc-browser-crumb" disabled={index === all.length - 1} onClick={() => setDir(crumb.path)}>{crumb.label}</button>
+              <button className="nc-browser-crumb" disabled={index === all.length - 1} onClick={() => moveTo(crumb.path)}>{crumb.label}</button>
               {index < all.length - 1 && <span className="nc-browser-sep">/</span>}
             </span>
           ))}
         </nav>
 
+        <input
+          className="nc-browser-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="このフォルダ内を名前で絞り込み…"
+          aria-label="ファイル名で絞り込み"
+        />
+
         <div className="nc-browser-list">
           {loading && <p className="nc-browser-empty">読み込み中…</p>}
-          {!loading && parent !== null && (
-            <button className="nc-browser-row nc-browser-up" onClick={() => setDir(parent)}>📁 ..（上のフォルダ）</button>
+          {!loading && !q && parent !== null && (
+            <button className="nc-browser-row nc-browser-up" onClick={() => moveTo(parent)}>📁 ..（上のフォルダ）</button>
           )}
           {!loading && folders.map((entry) => (
             <button
               key={entry.name}
               className="nc-browser-row"
-              onClick={() => setDir(dir ? `${dir}/${entry.name}` : entry.name)}
+              onClick={() => moveTo(dir ? `${dir}/${entry.name}` : entry.name)}
             >
               📁 {entry.name}
             </button>
@@ -103,9 +122,10 @@ export function FileBrowserModal({ onClose }: { onClose(): void }) {
             </button>
           ))}
           {!loading && !folders.length && !files.length && (
-            <p className="nc-browser-empty">このフォルダには何もありません</p>
+            <p className="nc-browser-empty">{q ? `「${query}」に一致するものがありません` : 'このフォルダには何もありません'}</p>
           )}
         </div>
+        {hiddenByQuery && <small className="nc-browser-hint">絞り込み中：一致しない項目は隠れています</small>}
 
         {message && <span className="nc-project-message">{message}</span>}
       </section>

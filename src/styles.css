@@ -508,10 +508,13 @@ button {
 }
 .nc-var-compact .nc-compact-title { padding-bottom: 4px; }
 .nc-var-compact-value {
+  overflow: hidden;
   padding: 0 14px;
   color: var(--text);
   font-size: 16px;
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .nc-var-compact-value em { margin-left: 4px; color: var(--dim); font-size: 10px; font-style: normal; }
 .nc-var-mode {
@@ -1241,6 +1244,23 @@ button {
 .nc-table-port small,
 .nc-table-output small { color: var(--dim); font-size: 9px; }
 .nc-table-port .nc-handle { top: 50%; }
+.nc-table-port-kind {
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--dim);
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.nc-table-port.is-text .nc-handle { background: var(--surface-2); }
+.nc-table-port-value {
+  overflow: hidden;
+  color: var(--teal);
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .nc-table-output {
   position: relative;
   display: grid;
@@ -1336,6 +1356,17 @@ button {
   box-shadow: 0 20px 60px rgb(0 0 0 / .55);
 }
 .nc-browser-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; color: var(--dim); font-size: 11px; }
+.nc-browser-search {
+  width: 100%;
+  padding: 6px 9px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+.nc-browser-search:focus { border-color: var(--teal); outline: none; }
+.nc-browser-hint { margin-top: -4px; color: var(--dim); font-size: 10px; }
 .nc-browser-crumb { padding: 2px 4px; background: transparent; border: 0; color: var(--muted); cursor: pointer; }
 .nc-browser-crumb:hover:not(:disabled) { color: var(--teal); }
 .nc-browser-crumb:disabled { color: var(--text); cursor: default; }
